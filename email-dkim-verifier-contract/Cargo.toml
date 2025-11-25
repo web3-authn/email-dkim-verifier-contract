@@ -2,6 +2,8 @@
 name = "email-dkim-verifier-contract"
 version = "0.1.0"
 edition = "2021"
+description = "email DKIM verifier contract"
+repository = "https://github.com/web3-authn/dkim-verifier-contract"
 
 [package.metadata.near.reproducible_build]
 image = "sourcescan/cargo-near:0.16.2-rust-1.86.0"
