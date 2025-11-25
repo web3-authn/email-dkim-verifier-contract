@@ -36,7 +36,7 @@ JSON_ARGS=$(jq -n --arg email_blob "$EMAIL_BLOB" --argjson params '{}' \
 
 near contract call-function as-transaction "$CONTRACT_ID" request_email_verification \
   json-args "$JSON_ARGS" \
-  prepaid-gas '100.0 Tgas' \
+  prepaid-gas '300.0 Tgas' \
   attached-deposit '0.1 NEAR' \
   sign-as "$SIGNER_ID" \
   network-config "$NEAR_NETWORK_ID" \

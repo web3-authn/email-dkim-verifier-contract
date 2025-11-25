@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
-use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
-use trust_dns_resolver::Resolver;
+use wasi_http_client::Client;
 
 #[derive(Deserialize)]
 struct Input {
+    // Extra fields like `params` are ignored during deserialization.
     email_blob: String,
 }
 
@@ -14,6 +14,17 @@ struct Output {
     domain: Option<String>,
     records: Vec<String>,
     error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DnsAnswer {
+    data: String,
+}
+
+#[derive(Deserialize)]
+struct DnsResponse {
+    #[serde(rename = "Answer")]
+    answer: Option<Vec<DnsAnswer>>,
 }
 
 fn extract_header_value(email: &str, header_name: &str) -> Option<String> {
@@ -88,29 +99,45 @@ fn extract_dkim_selector_and_domain(email: &str) -> Result<(String, String), Str
 }
 
 fn fetch_dkim_txt_records(selector: &str, domain: &str) -> Result<Vec<String>, String> {
-    let resolver =
-        Resolver::new(ResolverConfig::default(), ResolverOpts::default()).map_err(|e| {
-            format!("failed to create DNS resolver: {e}")
-        })?;
-
     let name = format!("{}._domainkey.{}", selector, domain);
-    let txt_lookup = resolver
-        .txt_lookup(name.as_str())
-        .map_err(|e| format!("TXT lookup failed for {name}: {e}"))?;
+    let url = format!("https://dns.google/resolve?name={name}&type=TXT");
+    let client = Client::new();
+    let resp = client
+        .get(&url)
+        .send()
+        .map_err(|e| format!("HTTP request failed: {e}"))?;
+
+    let status = resp.status();
+    if !(200..300).contains(&status) {
+        return Err(format!(
+            "HTTP status {} when querying DNS for {}",
+            status, name
+        ));
+    }
+
+    let body_bytes = resp
+        .body()
+        .map_err(|e| format!("failed to read HTTP body: {e}"))?;
+
+    let dns: DnsResponse =
+        serde_json::from_slice(&body_bytes).map_err(|e| format!("failed to parse DNS JSON: {e}"))?;
 
     let mut records = Vec::new();
-    for txt in txt_lookup.iter() {
-        let mut combined = String::new();
-        for packet in txt.txt_data() {
-            combined.push_str(&String::from_utf8_lossy(packet));
-        }
-        if !combined.is_empty() {
-            records.push(combined);
+    if let Some(answers) = dns.answer {
+        for ans in answers {
+            let mut data = ans.data;
+            // DNS-over-HTTPS TXT answers are often wrapped in quotes.
+            if data.starts_with('\"') && data.ends_with('\"') && data.len() >= 2 {
+                data = data[1..data.len() - 1].to_string();
+            }
+            if !data.is_empty() {
+                records.push(data);
+            }
         }
     }
 
     if records.is_empty() {
-        Err("no DKIM TXT records found".to_string())
+        Err(format!("no TXT records found for {name}"))
     } else {
         Ok(records)
     }

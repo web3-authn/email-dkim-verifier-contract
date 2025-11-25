@@ -67,7 +67,7 @@ impl EmailDkimVerifier {
             "GitHub": {
                 "repo": "https://github.com/web3-authn/dkim-verifier-contract",
                 "commit": "main",
-                "build_target": "wasm32-wasip1"
+                "build_target": "wasm32-wasip2"
             }
         });
 
