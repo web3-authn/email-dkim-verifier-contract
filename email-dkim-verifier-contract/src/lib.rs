@@ -60,10 +60,15 @@ impl EmailDkimVerifier {
         })
         .to_string();
 
+        // OutLayer currently expects a typed `CodeSource` enum with variants
+        // `GitHub` and `WasmUrl`. Wrap the GitHub source in the `GitHub`
+        // variant to match that schema.
         let code_source = json!({
-            "repo": "https://github.com/web3-authn/dkim-verifier-contract",
-            "commit": "main",
-            "build_target": "wasm32-wasip1"
+            "GitHub": {
+                "repo": "https://github.com/web3-authn/dkim-verifier-contract",
+                "commit": "main",
+                "build_target": "wasm32-wasip1"
+            }
         });
 
         let resource_limits = json!({
