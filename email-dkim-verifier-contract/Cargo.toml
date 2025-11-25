@@ -6,10 +6,9 @@ description = "email DKIM verifier contract"
 repository = "https://github.com/web3-authn/dkim-verifier-contract"
 
 [package.metadata.near.reproducible_build]
-image = "sourcescan/cargo-near:0.14.1-rust-1.86.0"
-image_digest = "sha256:eaac91be3119cc7c136b6f375f2d3e092001f717ed6151ccc9d5348c2d6a640c"
+image = "sourcescan/cargo-near:0.16.2-rust-1.86.0"
+image_digest = "sha256:74c24d4d912f893198b8b13e01d43e0f78f3b00b3df45bf555a707eb4918a54e"
 passed_env = []
-# build commands inside of docker container
 container_build_command = [
     "cargo",
     "near",
