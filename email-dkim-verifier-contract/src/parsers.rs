@@ -1,6 +1,9 @@
 use base64;
-use rsa::{PublicKey as _, RSAPublicKey};
-use sha2::{Digest, Sha256};
+use rsa::pkcs1::DecodeRsaPublicKey;
+use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey};
+use rsa::sha2::{Digest, Sha256};
+use rsa::signature::hazmat::PrehashVerifier;
+use rsa::RsaPublicKey;
 
 fn split_headers_body(email: &str) -> (&str, &str) {
     if let Some(idx) = email.find("\r\n\r\n") {
@@ -258,6 +261,7 @@ pub fn verify_dkim(email_blob: &str, dns_records: &[String]) -> bool {
     hasher.update(data.as_bytes());
     let data_hash = hasher.finalize().to_vec();
 
+    // Extract RSA public key bytes from the DKIM DNS records (p= tag).
     let mut pk_bytes_opt = None;
     for rec in dns_records {
         let tags = parse_dkim_tags(rec);
@@ -273,26 +277,20 @@ pub fn verify_dkim(email_blob: &str, dns_records: &[String]) -> bool {
         None => return false,
     };
 
-    let public_key = match RSAPublicKey::from_pkcs8(&pk_bytes) {
+    // Interpret the DKIM p= value as a PKCS#1 DER-encoded RSA public key.
+    let public_key = match RsaPublicKey::from_pkcs1_der(&pk_bytes) {
         Ok(k) => k,
         Err(_) => return false,
     };
 
-    use rsa::PaddingScheme;
-    if public_key
-        .verify(
-            PaddingScheme::PKCS1v15Sign {
-                hash: Some(rsa::hash::Hash::SHA2_256),
-            },
-            &data_hash,
-            &signature,
-        )
-        .is_err()
-    {
-        return false;
-    }
+    // Verify RSASSA-PKCS1-v1_5 with SHA-256 over the canonicalized data.
+    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+    let sig = match RsaSignature::try_from(signature.as_slice()) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
 
-    true
+    verifying_key.verify_prehash(&data_hash, &sig).is_ok()
 }
 
 #[cfg(test)]

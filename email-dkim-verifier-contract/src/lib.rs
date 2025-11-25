@@ -1,25 +1,15 @@
 use near_sdk::{env, ext_contract, near, AccountId, NearToken, Promise, PromiseError};
-use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
 
 mod parsers;
 
-use crate::parsers::{parse_dkim_tags, verify_dkim};
+use crate::parsers::verify_dkim;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 
 #[near(contract_state)]
 pub struct EmailDkimVerifier;
-
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct DnsRecordsResponse {
-    pub selector: Option<String>,
-    pub domain: Option<String>,
-    pub records: Vec<String>,
-    pub error: Option<String>,
-}
 
 #[ext_contract(ext_outlayer)]
 trait OutLayer {
@@ -40,7 +30,7 @@ trait ExtEmailDkimVerifier {
         &mut self,
         requested_by: AccountId,
         email_blob: String,
-        #[callback_result] result: Result<Option<DnsRecordsResponse>, PromiseError>,
+        #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> bool;
 }
 
@@ -103,24 +93,37 @@ impl EmailDkimVerifier {
     #[private]
     pub fn on_email_verification_result(
         &mut self,
-        _requested_by: AccountId,
+        requested_by: AccountId,
         email_blob: String,
-        #[callback_result] result: Result<Option<DnsRecordsResponse>, PromiseError>,
+        #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> bool {
-        let response = match result {
-            Ok(Some(res)) => res,
+        let _ = requested_by;
+        let value = match result {
+            Ok(Some(v)) => v,
             _ => return false,
         };
 
-        if let Some(err) = response.error {
+        if let Some(err) = value.get("error").and_then(|v| v.as_str()) {
             env::log_str(&format!("DKIM DNS fetch error: {err}"));
             return false;
         }
 
-        if response.records.is_empty() {
+        let records = value
+            .get("records")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let record_strings: Vec<String> = records
+            .into_iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+
+        if record_strings.is_empty() {
             return false;
         }
-        verify_dkim(&email_blob, &response.records)
+
+        verify_dkim(&email_blob, &record_strings)
     }
 }
 

@@ -9,9 +9,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 near-sdk = { version = "5.17.2" }
 borsh = "1.5"
-sha2 = "0.10"
 base64 = "0.13"
-rsa = "0.3.0"
+rsa = { version = "0.10.0-rc.10", default-features = false, features = ["sha2", "encoding"] }
 
 [features]
 unit-testing = ["near-sdk/unit-testing"]
