@@ -25,6 +25,7 @@ near-sdk = { version = "5.17.2" }
 borsh = "1.5"
 base64 = "0.13"
 rsa = { version = "0.10.0-rc.10", default-features = false, features = ["sha2", "encoding"] }
+schemars = "0.8"
 
 [features]
 unit-testing = ["near-sdk/unit-testing"]

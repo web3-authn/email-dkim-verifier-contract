@@ -5,6 +5,7 @@ use crate::parsers::{extract_header_value, parse_recover_subject};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
 use near_sdk::{env, ext_contract, near, AccountId, NearToken, Promise, PromiseError};
+use schemars::JsonSchema;
 
 pub use crate::parsers::parse_dkim_tags;
 pub use crate::verify_dkim::verify_dkim;
@@ -15,7 +16,7 @@ const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 #[near(contract_state)]
 pub struct EmailDkimVerifier;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "near_sdk::serde")]
 pub struct VerificationResult {
     pub verified: bool,
