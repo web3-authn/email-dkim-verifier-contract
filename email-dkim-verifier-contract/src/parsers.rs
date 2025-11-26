@@ -1,11 +1,88 @@
-use base64;
-use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey};
-use rsa::pkcs8::DecodePublicKey;
-use rsa::sha2::{Digest, Sha256};
-use rsa::signature::hazmat::PrehashVerifier;
-use rsa::RsaPublicKey;
+use near_sdk::AccountId;
 
-fn split_headers_body(email: &str) -> (&str, &str) {
+pub fn extract_header_value(email: &str, header_name: &str) -> Option<String> {
+    let target = header_name.to_ascii_lowercase();
+    let mut lines = email.lines().peekable();
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with(&format!("{target}:")) {
+            let mut value = trimmed.splitn(2, ':').nth(1)?.trim().to_string();
+            while let Some(next) = lines.peek() {
+                if next.starts_with(' ') || next.starts_with('\t') {
+                    let cont = next.trim();
+                    if !cont.is_empty() {
+                        value.push(' ');
+                        value.push_str(cont);
+                    }
+                    lines.next();
+                } else {
+                    break;
+                }
+            }
+            if value.is_empty() {
+                return None;
+            } else {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+pub fn parse_recover_subject(subject: &str) -> Option<(AccountId, String)> {
+    let subject = subject.trim();
+    let mut parts = subject.split('|');
+
+    let kind = parts.next()?;
+    if kind != "recover" {
+        return None;
+    }
+
+    let account_id_str = parts.next()?.trim();
+    let key_str = parts.next()?.trim();
+
+    if parts.next().is_some() {
+        return None;
+    }
+
+    if !key_str.starts_with("ed25519:") {
+        return None;
+    }
+    if key_str.len() <= "ed25519:".len() {
+        return None;
+    }
+
+    let account_id: AccountId = match account_id_str.parse() {
+        Ok(a) => a,
+        Err(_) => return None,
+    };
+
+    Some((account_id, key_str.to_string()))
+}
+
+pub fn parse_dkim_tags(value: &str) -> std::collections::HashMap<String, String> {
+    let mut tags = std::collections::HashMap::new();
+    let unfolded = value.replace("\r\n", " ");
+    for part in unfolded.split(';') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if let Some(pos) = part.find('=') {
+            let (k, v) = part.split_at(pos);
+            let key = k.trim().to_ascii_lowercase();
+            let val = v[1..].trim().to_string();
+            tags.insert(key, val);
+        }
+    }
+    tags
+}
+
+pub fn split_headers_body(email: &str) -> (&str, &str) {
     if let Some(idx) = email.find("\r\n\r\n") {
         let (h, rest) = email.split_at(idx);
         let body = &rest[4..];
@@ -19,7 +96,7 @@ fn split_headers_body(email: &str) -> (&str, &str) {
     }
 }
 
-fn parse_headers(raw_headers: &str) -> Vec<(String, String)> {
+pub fn parse_headers(raw_headers: &str) -> Vec<(String, String)> {
     let mut headers = Vec::new();
     let mut current_name: Option<String> = None;
     let mut current_value = String::new();
@@ -54,7 +131,7 @@ fn parse_headers(raw_headers: &str) -> Vec<(String, String)> {
     headers
 }
 
-fn canonicalize_header_relaxed(value: String) -> String {
+pub fn canonicalize_header_relaxed(value: String) -> String {
     let mut v = value.replace('\t', " ");
     v = v.replace("\r\n", " ");
 
@@ -83,7 +160,7 @@ fn canonicalize_header_relaxed(value: String) -> String {
     v
 }
 
-fn canonicalize_headers_relaxed(
+pub fn canonicalize_headers_relaxed(
     headers: &[(String, String)],
     signed_headers: &[String],
 ) -> String {
@@ -109,7 +186,7 @@ fn canonicalize_headers_relaxed(
     result
 }
 
-fn canonicalize_body_relaxed(body: &str) -> String {
+pub fn canonicalize_body_relaxed(body: &str) -> String {
     // Implement relaxed body canonicalization per RFC 6376:
     // - Convert all whitespace runs within lines to a single SP.
     // - Remove trailing WSP at end of lines.
@@ -158,32 +235,14 @@ fn canonicalize_body_relaxed(body: &str) -> String {
     result
 }
 
-fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
+pub fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
     headers
         .iter()
         .find(|(name, _)| name.eq_ignore_ascii_case("DKIM-Signature"))
         .map(|(_, v)| v.clone())
 }
 
-pub fn parse_dkim_tags(value: &str) -> std::collections::HashMap<String, String> {
-    let mut tags = std::collections::HashMap::new();
-    let unfolded = value.replace("\r\n", " ");
-    for part in unfolded.split(';') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        if let Some(pos) = part.find('=') {
-            let (k, v) = part.split_at(pos);
-            let key = k.trim().to_ascii_lowercase();
-            let val = v[1..].trim().to_string();
-            tags.insert(key, val);
-        }
-    }
-    tags
-}
-
-fn build_canonicalized_dkim_header_relaxed(value: &str) -> String {
+pub fn build_canonicalized_dkim_header_relaxed(value: &str) -> String {
     // Follow the approach from the reference DKIM implementation:
     // locate the b= tag and remove its value, then apply relaxed
     // header canonicalization to the resulting field value.
@@ -240,114 +299,13 @@ fn build_canonicalized_dkim_header_relaxed(value: &str) -> String {
     format!("dkim-signature:{}", canon_value)
 }
 
-pub fn verify_dkim(email_blob: &str, dns_records: &[String]) -> bool {
-    let (raw_headers, body) = split_headers_body(email_blob);
-    let headers = parse_headers(raw_headers);
-
-    let dkim_value = match parse_dkim_header(&headers) {
-        Some(v) => v,
-        None => return false,
-    };
-
-    let tags = parse_dkim_tags(&dkim_value);
-
-    let algo = tags.get("a").map(String::as_str).unwrap_or("");
-    if algo != "rsa-sha256" {
-        return false;
-    }
-
-    let canon = tags.get("c").map(String::as_str).unwrap_or("simple/simple");
-    if canon != "relaxed/relaxed" {
-        return false;
-    }
-
-    let bh_b64 = match tags.get("bh") {
-        Some(v) => v,
-        None => return false,
-    };
-    // Some implementations insert folding whitespace inside base64-encoded values.
-    // Strip any non-base64 characters before decoding.
-    let bh_clean: String = bh_b64
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=')
-        .collect();
-    let bh = match base64::decode(&bh_clean) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-
-    let b_b64 = match tags.get("b") {
-        Some(v) => v,
-        None => return false,
-    };
-    let b_clean: String = b_b64
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=')
-        .collect();
-    let signature = match base64::decode(&b_clean) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-
-    let h_list = match tags.get("h") {
-        Some(v) => v,
-        None => return false,
-    };
-    let signed_headers: Vec<String> =
-        h_list.split(':').map(|s| s.trim().to_ascii_lowercase()).collect();
-
-    let canon_body = canonicalize_body_relaxed(body);
-    let mut hasher = Sha256::new();
-    hasher.update(canon_body.as_bytes());
-    let computed_bh = hasher.finalize().to_vec();
-    if computed_bh != bh {
-        return false;
-    }
-
-    let canon_headers = canonicalize_headers_relaxed(&headers, &signed_headers);
-    let canon_dkim_header = build_canonicalized_dkim_header_relaxed(&dkim_value);
-    let mut data = canon_headers;
-    data.push_str(&canon_dkim_header);
-
-    let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
-    let data_hash = hasher.finalize().to_vec();
-
-    // Extract RSA public key bytes from the DKIM DNS records (p= tag).
-    let mut pk_bytes_opt = None;
-    for rec in dns_records {
-        let tags = parse_dkim_tags(rec);
-        if let Some(p) = tags.get("p") {
-            if let Ok(bytes) = base64::decode(p) {
-                pk_bytes_opt = Some(bytes);
-                break;
-            }
-        }
-    }
-    let pk_bytes = match pk_bytes_opt {
-        Some(v) => v,
-        None => return false,
-    };
-
-    // Interpret the DKIM p= value as a DER-encoded SubjectPublicKeyInfo (SPKI).
-    let public_key = match RsaPublicKey::from_public_key_der(&pk_bytes) {
-        Ok(k) => k,
-        Err(_) => return false,
-    };
-
-    // Verify RSASSA-PKCS1-v1_5 with SHA-256 over the canonicalized data.
-    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-    let sig = match RsaSignature::try_from(signature.as_slice()) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-
-    verifying_key.verify_prehash(&data_hash, &sig).is_ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64;
+    use rsa::pkcs8::DecodePublicKey;
+    use rsa::sha2::{Digest, Sha256};
+    use rsa::RsaPublicKey;
 
     #[test]
     fn real_gmail_full_message_body_hash_matches_bh() {
@@ -376,39 +334,5 @@ mod tests {
         let p_b64 = tags.get("p").expect("p tag");
         let pk_bytes = base64::decode(p_b64).expect("p base64");
         RsaPublicKey::from_public_key_der(&pk_bytes).expect("valid RSA public key");
-    }
-
-    fn real_gmail_dns_records() -> Vec<String> {
-        vec!["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntvSKT1hkqhKe0xcaZ0x+QbouDsJuBfby/S82jxsoC/SodmfmVs2D1KAH3mi1AqdMdU12h2VfETeOJkgGYq5ljd996AJ7ud2SyOLQmlhaNHH7Lx+Mdab8/zDN1SdxPARDgcM7AsRECHwQ15R20FaKUABGu4NTbR2fDKnYwiq5jQyBkLWP+LgGOgfUF4T4HZb2PY2bQtEP6QeqOtcW4rrsH24L7XhD+HSZb1hsitrE0VPbhJzxDwI4JF815XMnSVjZgYUXP8CxI1Y0FONlqtQYgsorZ9apoW1KPQe8brSSlRsi9sXB/tu56LmG7tEDNmrZ5XUwQYUUADBOu7t1niwXwIDAQAB".to_string()]
-    }
-
-    #[test]
-    fn modifying_subject_breaks_dkim() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
-        let modified = email_blob.replacen(
-            "Subject: reset|bob.near|ed25519:xxxxxxxxxxxyz",
-            "Subject: reset|alice.near|ed25519:xxxxxxxxxxxyz",
-            1,
-        );
-        assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
-    }
-
-    #[test]
-    fn modifying_body_plain_text_breaks_dkim() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
-        // Change the plain-text body content.
-        let modified = email_blob.replacen("test9", "test9-modified", 1);
-        assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
-    }
-
-    #[test]
-    fn modifying_from_breaks_dkim() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
-        let modified = email_blob.replacen(
-            "From: Pta <n6378056@gmail.com>",
-            "From: Mallory <mallory@example.com>",
-            1,
-        );
-        assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
     }
 }

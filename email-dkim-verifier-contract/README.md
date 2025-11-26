@@ -47,23 +47,58 @@ pub fn request_email_verification(
   - This funds the OutLayer execution; unused funds are refunded at the end of the transaction.
 
 - Return value  
-  - Returns a `Promise`. The final outcome is the `bool` returned by the private callback:
+  - Returns a `Promise`. The final outcome is the `VerificationResult` returned by the private callback:
     ```rust
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(crate = "near_sdk::serde")]
+    pub struct VerificationResult {
+        pub verified: bool,
+        pub account_id: Option<AccountId>,
+        pub new_public_key: Option<String>,
+    }
+
     #[private]
     pub fn on_email_verification_result(
         &mut self,
         requested_by: AccountId,
         email_blob: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
-    ) -> bool
+    ) -> VerificationResult
     ```
-  - `true`: OutLayer succeeded, TXT records were fetched, and `verify_dkim(email_blob, &records)` passed.
-  - `false`: any failure (OutLayer error, no TXT records, DKIM mismatch, RSA verification failure, etc.).
+  - `verified == true`: OutLayer succeeded, TXT records were fetched, and `verify_dkim(email_blob, &records)` passed.
+  - `verified == false`: any failure (OutLayer error, no TXT records, DKIM mismatch, RSA verification failure, etc.).
+  - `account_id` / `new_public_key`:
+    - When `verified == true` and the `Subject:` header matches the format  
+      `recover|user.testnet|ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx`, they are populated as:
+      - `account_id`: `Some("user.testnet".parse().unwrap())`
+      - `new_public_key`: `Some("ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx".to_string())`
+    - Otherwise they are `None`, and callers can treat the result as “DKIM verified, but no recover instruction embedded in Subject”.
 
 Typical usage from another contract:
 
 1. Call `request_email_verification` with the raw email and enough deposit/gas.
 2. In your own callback, accept a `bool verified` and, if `true`, apply your recovery / allow‑list logic (e.g. `add_key(new_public_key)`).
+
+### How to construct `email_blob`
+
+When you call `request_email_verification`, `email_blob` must be the **exact raw message** as seen on the wire:
+
+- Include all headers, including the `DKIM-Signature:` header that you want to verify.
+- Preserve original line endings and folding: headers and body separated by a blank line (`\r\n\r\n`), and any folded headers kept as-is.
+- Include the full MIME body (plain text, HTML, attachments, boundaries, etc.), not just the human-visible part.
+
+Typical sources for `email_blob`:
+
+- An SMTP ingress or mail worker that logs the full RFC‑5322 message as a string (`message.raw` or equivalent).
+- A mail API that exposes the “raw” or “RFC‑822 / RFC‑5322” form of a message; decode any transport/base64 encoding and pass the resulting bytes as UTF‑8.
+
+From your contract, you simply forward that string:
+
+```rust
+let promise = email_dkim_verifier_contract::ext(VERIFIER_CONTRACT_ID.parse().unwrap())
+    .with_attached_deposit(MIN_DEPOSIT.into())
+    .request_email_verification(email_blob, None);
+```
 
 ## Building & Testing
 

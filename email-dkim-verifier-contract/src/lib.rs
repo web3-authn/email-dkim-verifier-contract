@@ -1,15 +1,27 @@
-use near_sdk::{env, ext_contract, near, AccountId, NearToken, Promise, PromiseError};
-use near_sdk::serde_json::{self, json};
-
 mod parsers;
+mod verify_dkim;
 
-pub use crate::parsers::{parse_dkim_tags, verify_dkim};
+use crate::parsers::{extract_header_value, parse_recover_subject};
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde_json::{self, json};
+use near_sdk::{env, ext_contract, near, AccountId, NearToken, Promise, PromiseError};
+
+pub use crate::parsers::parse_dkim_tags;
+pub use crate::verify_dkim::verify_dkim;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 
 #[near(contract_state)]
 pub struct EmailDkimVerifier;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct VerificationResult {
+    pub verified: bool,
+    pub account_id: Option<AccountId>,
+    pub new_public_key: Option<String>,
+}
 
 #[ext_contract(ext_outlayer)]
 trait OutLayer {
@@ -31,7 +43,7 @@ trait ExtEmailDkimVerifier {
         requested_by: AccountId,
         email_blob: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
-    ) -> bool;
+    ) -> VerificationResult;
 }
 
 #[near]
@@ -101,16 +113,26 @@ impl EmailDkimVerifier {
         requested_by: AccountId,
         email_blob: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
-    ) -> bool {
+    ) -> VerificationResult {
         let _ = requested_by;
         let value = match result {
             Ok(Some(v)) => v,
-            _ => return false,
+            _ => {
+                return VerificationResult {
+                    verified: false,
+                    account_id: None,
+                    new_public_key: None,
+                }
+            }
         };
 
         if let Some(err) = value.get("error").and_then(|v| v.as_str()) {
             env::log_str(&format!("DKIM DNS fetch error: {err}"));
-            return false;
+            return VerificationResult {
+                verified: false,
+                account_id: None,
+                new_public_key: None,
+            };
         }
 
         let records = value
@@ -125,10 +147,37 @@ impl EmailDkimVerifier {
             .collect();
 
         if record_strings.is_empty() {
-            return false;
+            return VerificationResult {
+                verified: false,
+                account_id: None,
+                new_public_key: None,
+            };
         }
 
-        verify_dkim(&email_blob, &record_strings)
+        let verified = verify_dkim(&email_blob, &record_strings);
+
+        if !verified {
+            return VerificationResult {
+                verified: false,
+                account_id: None,
+                new_public_key: None,
+            };
+        }
+
+        let subject = extract_header_value(&email_blob, "Subject");
+        let (account_id, new_public_key) = match subject
+            .as_deref()
+            .and_then(|s| parse_recover_subject(s))
+        {
+            Some((account_id, key)) => (Some(account_id), Some(key)),
+            None => (None, None),
+        };
+
+        VerificationResult {
+            verified: true,
+            account_id,
+            new_public_key,
+        }
     }
 }
 
