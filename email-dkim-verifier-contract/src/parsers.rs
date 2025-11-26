@@ -1,6 +1,6 @@
 use base64;
-use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey};
+use rsa::pkcs8::DecodePublicKey;
 use rsa::sha2::{Digest, Sha256};
 use rsa::signature::hazmat::PrehashVerifier;
 use rsa::RsaPublicKey;
@@ -24,7 +24,8 @@ fn parse_headers(raw_headers: &str) -> Vec<(String, String)> {
     let mut current_name: Option<String> = None;
     let mut current_value = String::new();
 
-    for line in raw_headers.split("\r\n") {
+    for raw_line in raw_headers.split('\n') {
+        let line = raw_line.trim_end_matches('\r');
         if line.is_empty() {
             break;
         }
@@ -109,37 +110,52 @@ fn canonicalize_headers_relaxed(
 }
 
 fn canonicalize_body_relaxed(body: &str) -> String {
-    let mut body = body.replace('\t', " ");
+    // Implement relaxed body canonicalization per RFC 6376:
+    // - Convert all whitespace runs within lines to a single SP.
+    // - Remove trailing WSP at end of lines.
+    // - Remove trailing empty lines.
+    // - Ensure the body ends with a single CRLF.
 
-    let mut previous_space = false;
-    body.retain(|c| {
-        if c == ' ' {
-            if previous_space {
-                false
-            } else {
-                previous_space = true;
-                true
-            }
-        } else {
-            previous_space = false;
-            true
+    // Split on LF, normalize optional preceding CR.
+    let mut lines: Vec<String> = Vec::new();
+    for raw_line in body.split('\n') {
+        let mut line = raw_line.trim_end_matches('\r').to_string();
+        // Replace HTAB with SP.
+        line = line.replace('\t', " ");
+        // Remove trailing spaces.
+        while line.ends_with(' ') {
+            line.pop();
         }
-    });
-
-    while let Some(idx) = body.find(" \r\n") {
-        body.remove(idx);
+        // Collapse WSP runs to a single SP.
+        let mut out = String::new();
+        let mut prev_space = false;
+        for ch in line.chars() {
+            if ch == ' ' {
+                if !prev_space {
+                    out.push(' ');
+                    prev_space = true;
+                }
+            } else {
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+        lines.push(out);
     }
 
-    while body.ends_with("\r\n\r\n") {
-        body.pop();
-        body.pop();
+    // Remove trailing empty lines.
+    while matches!(lines.last(), Some(l) if l.is_empty()) {
+        lines.pop();
     }
 
-    if !body.is_empty() && !body.ends_with("\r\n") {
-        body.push_str("\r\n");
+    if lines.is_empty() {
+        // An empty body canonicalizes to a single CRLF.
+        return "\r\n".to_string();
     }
 
-    body
+    let mut result = lines.join("\r\n");
+    result.push_str("\r\n");
+    result
 }
 
 fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
@@ -168,33 +184,59 @@ pub fn parse_dkim_tags(value: &str) -> std::collections::HashMap<String, String>
 }
 
 fn build_canonicalized_dkim_header_relaxed(value: &str) -> String {
-    let unfolded = value.replace("\r\n", " ");
-    let mut parts = Vec::<(String, String)>::new();
+    // Follow the approach from the reference DKIM implementation:
+    // locate the b= tag and remove its value, then apply relaxed
+    // header canonicalization to the resulting field value.
 
-    for part in unfolded.split(';') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        if let Some(pos) = part.find('=') {
-            let (k, v) = part.split_at(pos);
-            let key = k.trim().to_ascii_lowercase();
-            let val = if key == "b" { String::new() } else { v[1..].trim().to_string() };
-            parts.push((key, val));
+    #[derive(PartialEq)]
+    enum State {
+        B,
+        EqualSign,
+        Semicolon,
+    }
+
+    let mut state = State::B;
+    let mut b_idx = 0;
+    let mut b_end_idx = 0;
+    for (idx, c) in value.chars().enumerate() {
+        match state {
+            State::B => {
+                if c == 'b' {
+                    state = State::EqualSign;
+                }
+            }
+            State::EqualSign => {
+                if c == '=' {
+                    b_idx = idx + 1;
+                    state = State::Semicolon;
+                } else {
+                    state = State::B;
+                }
+            }
+            State::Semicolon => {
+                if c == ';' {
+                    b_end_idx = idx;
+                    break;
+                }
+            }
         }
     }
 
-    let mut reconstructed = String::new();
-    for (idx, (k, v)) in parts.iter().enumerate() {
-        if idx > 0 {
-            reconstructed.push_str("; ");
-        }
-        reconstructed.push_str(k);
-        reconstructed.push('=');
-        reconstructed.push_str(v);
+    if b_end_idx == 0 && state == State::Semicolon {
+        b_end_idx = value.len();
     }
 
-    let canon_value = canonicalize_header_relaxed(reconstructed);
+    // Build the DKIM value with an empty b= tag.
+    let mut save = value
+        .get(..b_idx)
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+    save.push_str(match value.get(b_end_idx..) {
+        Some(end) => end,
+        None => "",
+    });
+
+    let canon_value = canonicalize_header_relaxed(save);
     format!("dkim-signature:{}", canon_value)
 }
 
@@ -223,7 +265,13 @@ pub fn verify_dkim(email_blob: &str, dns_records: &[String]) -> bool {
         Some(v) => v,
         None => return false,
     };
-    let bh = match base64::decode(bh_b64) {
+    // Some implementations insert folding whitespace inside base64-encoded values.
+    // Strip any non-base64 characters before decoding.
+    let bh_clean: String = bh_b64
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=')
+        .collect();
+    let bh = match base64::decode(&bh_clean) {
         Ok(v) => v,
         Err(_) => return false,
     };
@@ -232,7 +280,11 @@ pub fn verify_dkim(email_blob: &str, dns_records: &[String]) -> bool {
         Some(v) => v,
         None => return false,
     };
-    let signature = match base64::decode(b_b64) {
+    let b_clean: String = b_b64
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=')
+        .collect();
+    let signature = match base64::decode(&b_clean) {
         Ok(v) => v,
         Err(_) => return false,
     };
@@ -277,8 +329,8 @@ pub fn verify_dkim(email_blob: &str, dns_records: &[String]) -> bool {
         None => return false,
     };
 
-    // Interpret the DKIM p= value as a PKCS#1 DER-encoded RSA public key.
-    let public_key = match RsaPublicKey::from_pkcs1_der(&pk_bytes) {
+    // Interpret the DKIM p= value as a DER-encoded SubjectPublicKeyInfo (SPKI).
+    let public_key = match RsaPublicKey::from_public_key_der(&pk_bytes) {
         Ok(k) => k,
         Err(_) => return false,
     };
@@ -298,9 +350,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn verify_dkim_without_signature_fails() {
-        let email = "From: alice@example.com\r\nTo: bob@example.com\r\n\r\nHello\r\n";
-        let records: Vec<String> = Vec::new();
-        assert!(!verify_dkim(email, &records));
+    fn real_gmail_full_message_body_hash_matches_bh() {
+        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+
+        let (raw_headers, body) = split_headers_body(email_blob);
+        let headers = parse_headers(raw_headers);
+        let dkim_value = parse_dkim_header(&headers).expect("dkim header");
+        let tags = parse_dkim_tags(&dkim_value);
+
+        let bh_b64 = tags.get("bh").expect("bh tag");
+        let bh = base64::decode(bh_b64).expect("bh base64");
+
+        let canon_body = canonicalize_body_relaxed(body);
+        let mut hasher = Sha256::new();
+        hasher.update(canon_body.as_bytes());
+        let computed_bh = hasher.finalize().to_vec();
+
+        assert_eq!(bh, computed_bh, "body hash mismatch");
+    }
+
+    #[test]
+    fn real_gmail_dns_p_parses_as_rsa_key() {
+        let dns_record = "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntvSKT1hkqhKe0xcaZ0x+QbouDsJuBfby/S82jxsoC/SodmfmVs2D1KAH3mi1AqdMdU12h2VfETeOJkgGYq5ljd996AJ7ud2SyOLQmlhaNHH7Lx+Mdab8/zDN1SdxPARDgcM7AsRECHwQ15R20FaKUABGu4NTbR2fDKnYwiq5jQyBkLWP+LgGOgfUF4T4HZb2PY2bQtEP6QeqOtcW4rrsH24L7XhD+HSZb1hsitrE0VPbhJzxDwI4JF815XMnSVjZgYUXP8CxI1Y0FONlqtQYgsorZ9apoW1KPQe8brSSlRsi9sXB/tu56LmG7tEDNmrZ5XUwQYUUADBOu7t1niwXwIDAQAB";
+        let tags = parse_dkim_tags(dns_record);
+        let p_b64 = tags.get("p").expect("p tag");
+        let pk_bytes = base64::decode(p_b64).expect("p base64");
+        RsaPublicKey::from_public_key_der(&pk_bytes).expect("valid RSA public key");
+    }
+
+    fn real_gmail_dns_records() -> Vec<String> {
+        vec!["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntvSKT1hkqhKe0xcaZ0x+QbouDsJuBfby/S82jxsoC/SodmfmVs2D1KAH3mi1AqdMdU12h2VfETeOJkgGYq5ljd996AJ7ud2SyOLQmlhaNHH7Lx+Mdab8/zDN1SdxPARDgcM7AsRECHwQ15R20FaKUABGu4NTbR2fDKnYwiq5jQyBkLWP+LgGOgfUF4T4HZb2PY2bQtEP6QeqOtcW4rrsH24L7XhD+HSZb1hsitrE0VPbhJzxDwI4JF815XMnSVjZgYUXP8CxI1Y0FONlqtQYgsorZ9apoW1KPQe8brSSlRsi9sXB/tu56LmG7tEDNmrZ5XUwQYUUADBOu7t1niwXwIDAQAB".to_string()]
+    }
+
+    #[test]
+    fn modifying_subject_breaks_dkim() {
+        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        let modified = email_blob.replacen(
+            "Subject: reset|bob.near|ed25519:xxxxxxxxxxxyz",
+            "Subject: reset|alice.near|ed25519:xxxxxxxxxxxyz",
+            1,
+        );
+        assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
+    }
+
+    #[test]
+    fn modifying_body_plain_text_breaks_dkim() {
+        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        // Change the plain-text body content.
+        let modified = email_blob.replacen("test9", "test9-modified", 1);
+        assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
+    }
+
+    #[test]
+    fn modifying_from_breaks_dkim() {
+        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        let modified = email_blob.replacen(
+            "From: Pta <n6378056@gmail.com>",
+            "From: Mallory <mallory@example.com>",
+            1,
+        );
+        assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
     }
 }

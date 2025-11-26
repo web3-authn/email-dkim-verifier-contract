@@ -3,7 +3,7 @@ use near_sdk::serde_json::{self, json};
 
 mod parsers;
 
-use crate::parsers::verify_dkim;
+pub use crate::parsers::{parse_dkim_tags, verify_dkim};
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
@@ -135,34 +135,5 @@ impl EmailDkimVerifier {
 impl Default for EmailDkimVerifier {
     fn default() -> Self {
         env::panic_str("Contract is not initialized");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::parsers::parse_dkim_tags;
-
-    const REAL_GMAIL_DKIM_VALUE: &str = "v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com; s=20230601; t=1764065518; x=1764670318; darn=web3authn.org; h=to:subject:message-id:date:from:mime-version:from:to:cc:subject :date:message-id:reply-to; bh=/3T/I4LKUj/5W2dhs5sEhe+rpsHRZVi0ngI9SyPKWSw=; b=O+LksKnZtVUpN9Omaz1pYKPa9EJc+NmIku/ZQ18zCvbimPjIDjdIONBTyYnO3JCgE7 yaySupoHQ+Dh3/z5NYufBPqkThR3Gu/7YwmmX4C76J7h6bc5u82WSlJ5FqHN/Y1cKWKl ZG5fh1kcmYYN8bPWeAluIZ/X1c9LMajWNRgIM/gOa+fqImUKXn3B18EVjnRui0duOQTP FHDAEK9wuqxvxl15PVFv3gjhqh1Z7FE4HNL8yvDtsKxabeUJwX/zHiwCLb8OYm9pnb0G HA69cdD/g55kcFQoBdc1zhdAFQyzJ07rSNBYXcIUA0KcSEiOGaOSeuYHoKE3zXUBgrtG 6Q8w==";
-
-    #[test]
-    fn parse_real_gmail_dkim_header_tags() {
-        let tags = parse_dkim_tags(REAL_GMAIL_DKIM_VALUE);
-
-        assert_eq!(tags.get("v").map(String::as_str), Some("1"));
-        assert_eq!(tags.get("a").map(String::as_str), Some("rsa-sha256"));
-        assert_eq!(tags.get("c").map(String::as_str), Some("relaxed/relaxed"));
-        assert_eq!(tags.get("d").map(String::as_str), Some("gmail.com"));
-        assert_eq!(tags.get("s").map(String::as_str), Some("20230601"));
-        assert_eq!(
-            tags.get("bh").map(String::as_str),
-            Some("/3T/I4LKUj/5W2dhs5sEhe+rpsHRZVi0ngI9SyPKWSw=")
-        );
-
-        // Ensure we captured the long signed header list and signature fields.
-        assert!(tags.get("h").is_some());
-        assert!(tags
-            .get("b")
-            .map(|v| v.starts_with("O+LksKnZtVUpN9Omaz1pYKPa9EJc+NmIku/ZQ18zCvbimPjIDjdIONBTyYnO3JCgE7"))
-            .unwrap_or(false));
     }
 }

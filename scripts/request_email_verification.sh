@@ -19,17 +19,9 @@ source .env
 : "${NEAR_NETWORK_ID:?Set NEAR_NETWORK_ID in .env (e.g. testnet)}"
 : "${SIGNER_ID:?Set SIGNER_ID in .env to the signer account ID}"
 
-EMAIL_BLOB=$(
-  cat <<'EOF'
-From: n6378056@gmail.com
-To: reset@web3authn.org
-Subject: test8
-Date: Tue, 30 Jun 2020 10:43:08 +0200
-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com; s=20230601; t=1764065518; x=1764670318; darn=web3authn.org; h=to:subject:message-id:date:from:mime-version:from:to:cc:subject :date:message-id:reply-to; bh=/3T/I4LKUj/5W2dhs5sEhe+rpsHRZVi0ngI9SyPKWSw=; b=O+LksKnZtVUpN9Omaz1pYKPa9EJc+NmIku/ZQ18zCvbimPjIDjdIONBTyYnO3JCgE7 yaySupoHQ+Dh3/z5NYufBPqkThR3Gu/7YwmmX4C76J7h6bc5u82WSlJ5FqHN/Y1cKWKl ZG5fh1kcmYYN8bPWeAluIZ/X1c9LMajWNRgIM/gOa+fqImUKXn3B18EVjnRui0duOQTP FHDAEK9wuqxvxl15PVFv3gjhqh1Z7FE4HNL8yvDtsKxabeUJwX/zHiwCLb8OYm9pnb0G HA69cdD/g55kcFQoBdc1zhdAFQyzJ07rSNBYXcIUA0KcSEiOGaOSeuYHoKE3zXUBgrtG 6Q8w==
-
-This is a test email body for DKIM verification.
-EOF
-)
+# Use a real Gmail DKIM sample (full raw message) that our contract
+# verifies in unit tests (see email-dkim-verifier-contract/tests/data/gmail_reset_full.eml).
+EMAIL_BLOB="$(cat email-dkim-verifier-contract/tests/data/gmail_reset_full.eml)"
 
 JSON_ARGS=$(jq -n --arg email_blob "$EMAIL_BLOB" --argjson params '{}' \
   '{email_blob: $email_blob, params: $params}')

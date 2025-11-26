@@ -32,3 +32,7 @@ upgrade-dev:
 request:
     @echo "Calling request_email_verification on contract..."
     ./scripts/request_email_verification.sh
+
+test:
+    @echo "cd email-dkim-verifier-contract && cargo test --features unit-testing"
+    ./scripts/tests.sh
