@@ -14,6 +14,57 @@ This is a **stateless, global** verifier. Other contracts (e.g. per‑user recov
 
 The OutLayer WASI worker that fetches TXT records lives in the **root crate** (`src/main.rs`) and is built from the same repository.
 
+## Contract Interface
+
+### `request_email_verification`
+
+```rust
+/// Payable entrypoint: delegate DKIM TXT fetch + verification to OutLayer.
+#[payable]
+pub fn request_email_verification(
+    &mut self,
+    email_blob: String,
+    params: Option<serde_json::Value>,
+) -> Promise
+```
+
+- `email_blob`  
+  Full raw RFC‑5322 email as received by your mail gateway (what your email worker logs as `message.raw`), including:
+  - All headers (`DKIM-Signature`, `From`, `To`, `Subject`, `Date`, `Message-ID`, MIME headers, etc.).
+  - Full MIME body (plain + HTML parts, boundaries).
+
+- `params`  
+  Optional JSON blob forwarded to the OutLayer worker. Currently unused by the contract itself; reserved for caller‑specific metadata / future extensions.
+
+- Attached deposit  
+  - Must attach at least `MIN_DEPOSIT` (currently `0.01 NEAR`):
+    ```rust
+    assert!(
+        attached >= MIN_DEPOSIT,
+        "Attach at least 0.01 NEAR for Outlayer execution"
+    );
+    ```
+  - This funds the OutLayer execution; unused funds are refunded at the end of the transaction.
+
+- Return value  
+  - Returns a `Promise`. The final outcome is the `bool` returned by the private callback:
+    ```rust
+    #[private]
+    pub fn on_email_verification_result(
+        &mut self,
+        requested_by: AccountId,
+        email_blob: String,
+        #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
+    ) -> bool
+    ```
+  - `true`: OutLayer succeeded, TXT records were fetched, and `verify_dkim(email_blob, &records)` passed.
+  - `false`: any failure (OutLayer error, no TXT records, DKIM mismatch, RSA verification failure, etc.).
+
+Typical usage from another contract:
+
+1. Call `request_email_verification` with the raw email and enough deposit/gas.
+2. In your own callback, accept a `bool verified` and, if `true`, apply your recovery / allow‑list logic (e.g. `add_key(new_public_key)`).
+
 ## Building & Testing
 
 From the repo root:
