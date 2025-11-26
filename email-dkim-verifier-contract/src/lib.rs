@@ -20,7 +20,7 @@ pub struct EmailDkimVerifier;
 #[serde(crate = "near_sdk::serde")]
 pub struct VerificationResult {
     pub verified: bool,
-    pub account_id: Option<AccountId>,
+    pub account_id: Option<String>,
     pub new_public_key: Option<String>,
 }
 
@@ -170,7 +170,7 @@ impl EmailDkimVerifier {
             .as_deref()
             .and_then(|s| parse_recover_subject(s))
         {
-            Some((account_id, key)) => (Some(account_id), Some(key)),
+            Some((account_id, key)) => (Some(account_id.to_string()), Some(key)),
             None => (None, None),
         };
 

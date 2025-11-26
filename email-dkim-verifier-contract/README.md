@@ -53,7 +53,7 @@ pub fn request_email_verification(
     #[serde(crate = "near_sdk::serde")]
     pub struct VerificationResult {
         pub verified: bool,
-        pub account_id: Option<AccountId>,
+        pub account_id: Option<String>,
         pub new_public_key: Option<String>,
     }
 
@@ -70,7 +70,7 @@ pub fn request_email_verification(
   - `account_id` / `new_public_key`:
     - When `verified == true` and the `Subject:` header matches the format  
       `recover|user.testnet|ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx`, they are populated as:
-      - `account_id`: `Some("user.testnet".parse().unwrap())`
+      - `account_id`: `Some("user.testnet".to_string())`
       - `new_public_key`: `Some("ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx".to_string())`
     - Otherwise they are `None`, and callers can treat the result as “DKIM verified, but no recover instruction embedded in Subject”.
 
