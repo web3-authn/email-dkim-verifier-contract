@@ -548,7 +548,6 @@ version = "0.1.0"
 dependencies = [
  "base64 0.13.1",
  "borsh",
- "chrono",
  "near-sdk",
  "rsa",
  "schemars 0.8.22",
