@@ -23,8 +23,12 @@ source .env
 # verifies in unit tests (see email-dkim-verifier-contract/tests/data/gmail_reset_full.eml).
 EMAIL_BLOB="$(cat email-dkim-verifier-contract/tests/data/gmail_reset_full.eml)"
 
-JSON_ARGS=$(jq -n --arg email_blob "$EMAIL_BLOB" --argjson params '{}' \
-  '{email_blob: $email_blob, params: $params}')
+# In this CLI scenario, the payer is the signer (relayer).
+JSON_ARGS=$(jq -n \
+  --arg payer_account_id "$SIGNER_ID" \
+  --arg email_blob "$EMAIL_BLOB" \
+  --argjson params '{}' \
+  '{payer_account_id: $payer_account_id, email_blob: $email_blob, params: $params}')
 
 near contract call-function as-transaction "$CONTRACT_ID" request_email_verification \
   json-args "$JSON_ARGS" \
