@@ -7,54 +7,49 @@ This document tracks how the on-chain DKIM verifier in `email-dkim-verifier-cont
 - **Algorithms and canonicalization**  
   Only signatures with `a=rsa-sh256` and `c=relaxed/relaxed` are accepted. Other RFC‑allowed combinations (e.g. `rsa-sha1`, `simple/relaxed`) are treated as invalid.
 
-- **`l=` body length tag is ignored**  
-  The verifier always hashes the full canonicalized body and compares it to `bh`, regardless of any `l=` tag. RFC 6376 requires hashing only the first `l` octets of the canonicalized body.
-
-- **Multiple instances of a header field**  
-  When applying the `h=` list, headers are picked from the top of the header block downward. RFC 6376 requires selecting multiple instances from the bottom up (physically last first), which can matter when a field (e.g. `Received`) appears multiple times.
-
-- **Multiple DKIM-Signature headers**  
-  Only the first `DKIM-Signature` header field is parsed and verified. RFC 6376 allows multiple signatures and expects verifiers to try each until one verifies (or all fail).
-
-- **`b=` handling is fragile with folding whitespace**  
-  To zero out `b=` before hashing, the code looks for a literal `b` immediately followed by `=`. Signatures that use valid folding whitespace around `=` (e.g. `b = ...`, `b\t= ...`) may not be handled correctly.
-
-- **Limited DKIM-Signature tag validation**  
-  The verifier enforces only a subset of required DKIM-Signature tags (`a`, `c`, `bh`, `b`, `h`) and does not currently reject unsupported `v=` values or missing `d=` / `s=` tags.
-
-- **Limited DNS key record validation**  
-  From TXT records it picks the first decodable `p=` value and treats it as a DER-encoded SPKI key. It ignores other key-record tags (`v`, `k`, `h`, `t`) and does not explicitly treat empty `p=` as a revoked key.
-
 - **Simplified result model**  
   The public API exposes only a boolean result. It does not distinguish RFC 6376’s `SUCCESS` / `PERMFAIL` / `TEMPFAIL` states, which may be acceptable for the current use case but is technically less expressive than the RFC.
 
-## Low-gas TODOs
+## Implemented RFC 6376 improvements
 
-These are changes that are both technically feasible and should not significantly increase per-call gas usage.
+These items from the original TODO list are now implemented and live in `src/parsers.rs` / `src/verify_dkim.rs`.
 
 - **Honor the `l=` body length tag**  
-  - Parse `l=` from the DKIM-Signature header (when present).  
-  - After relaxed body canonicalization, hash only the first `l` octets when computing `bh`/verifying `bh`.  
-  - Reject signatures where `l` exceeds the canonicalized body length or does not match `bh`.
+  - The verifier now parses the `l=` tag (when present) from the DKIM-Signature header and, after relaxed body canonicalization, hashes only the first `l` octets when computing and verifying `bh`.  
+  - Signatures with `l=` that allow trailing content (e.g. mailing list footers) now verify correctly, as long as the canonicalized body length is at least `l`.
 
-- **Fix header selection order for repeated fields**  
-  - When applying the `h=` list, select header instances from the bottom of the header block upward, as required by RFC 6376 5.4.2.  
-  - Keep the implementation simple (e.g. pre-index header positions by name) to avoid extra passes over the data.
+- **Correct header selection order for repeated fields**  
+  - When applying the `h=` list, header instances are now selected from the bottom of the header block upward (physically last first), as required by RFC 6376 §5.4.2.  
+  - This avoids false negatives when there are multiple instances of a header field (e.g. multiple `Subject`, `From`, or `Received` lines) and the signer intended specific instances to be covered.
 
-- **Make `b=` zeroing robust to folding whitespace**  
-  - Replace the current state machine with a tag-aware scan that tolerates optional WSP around `=` (e.g. `b =`, `b\t =`).  
-  - Ensure we remove exactly the `b=` value (including any FWS) before relaxed header canonicalization.
+- **Robust `b=` zeroing with folding whitespace (FWS)**  
+  - The code that constructs the canonicalized DKIM-Signature header (`build_canonicalized_dkim_header_relaxed`) now scans for the `b` tag in a tag-aware way and tolerates optional whitespace and folding around the `=` (e.g. `b = ...`, with line breaks).  
+  - It removes exactly the `b=` value (including any FWS) before relaxed header canonicalization, matching RFC 6376’s requirement that the `b` value be treated as empty for hashing.
 
-- **Tighten DKIM-Signature tag validation**  
-  - Require `v=1` when present and reject unsupported versions.  
-  - Enforce presence and non-emptiness of `d=` and `s=` tags.  
-  - Treat malformed or out-of-range tag values as a permanent verification failure.
+- **Support for multiple DKIM-Signature headers**  
+  - The verifier now collects all `DKIM-Signature` headers on the message and attempts verification for each one, accepting if **any** signature verifies successfully.  
+  - This aligns with RFC 6376’s expectations for handling multiple signatures (e.g. original sender plus intermediary or multiple keys in rotation).
 
-- **Tighten DNS key record validation (low overhead)**  
-  - Require `v=DKIM1` on key records and ignore records with unknown/unsupported versions.  
-  - Treat empty `p=` values as explicitly revoked keys.  
-  - Optionally enforce `k=rsa` when present, ignoring keys with incompatible `k`.
+- **Tighter DKIM-Signature tag validation**  
+  - When present, `v=1` is required; signatures with an unsupported `v` value are skipped.  
+  - `d=` (signing domain) and `s=` (selector) are required and must be non-empty.  
+  - Only `a=rsa-sha256` and `c=relaxed/relaxed` are currently accepted; others are treated as unsupported and ignored.  
+  - `bh`, `b`, and `h` tags must be present and non-empty, and `bh`/`b` values are validated as base64 before use.
 
-- **Support a bounded number of DKIM-Signature headers**  
-  - Iterate over up to a small fixed number of `DKIM-Signature` headers (e.g. 2–3) and accept if any one verifies.  
-  - This keeps gas usage bounded while aligning better with RFC 6376’s expectations around multiple signatures.
+- **Tighter DNS key record validation**  
+  - For TXT key records, `v=DKIM1` is required when present; records with unknown or unsupported versions are ignored.  
+  - When present, `k=` must be compatible (`k=rsa`); records with incompatible `k` are ignored.  
+  - Empty `p=` values are treated as explicitly revoked keys and are skipped.  
+  - The first usable `p=` that base64-decodes into a valid RSA SPKI key is used for verification.
+
+## Low-gas TODOs
+
+Remaining changes that are technically feasible and should not significantly increase per-call gas usage:
+
+- **Broader algorithm/canonicalization support**  
+  - Optionally add support for other RFC-allowed combinations (e.g. `rsa-sha1`, `simple/relaxed`, `relaxed/simple`) if needed for interoperability.  
+  - This would be gated behind careful measurement to avoid unnecessary gas costs.
+
+- **Richer result model (optional)**  
+  - If future callers need to distinguish PERMFAIL vs TEMPFAIL semantics, expand the verifier API to return a richer enum or status code alongside the boolean.  
+  - This is purely an API / semantics change and does not affect on-chain cryptographic behavior.

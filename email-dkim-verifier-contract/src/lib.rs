@@ -11,7 +11,8 @@ pub use crate::parsers::parse_dkim_tags;
 pub use crate::verify_dkim::verify_dkim;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
-const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
+const MIN_DEPOSIT: u128 = 2_000_000_000_000_000_000_000; // (0.02 NEAR)
+// actual measured fee: 1_019_100_000_000_000_000_000 // 0.01019 NEAR
 
 #[near(contract_state)]
 pub struct EmailDkimVerifier;
@@ -58,6 +59,7 @@ impl EmailDkimVerifier {
     #[payable]
     pub fn request_email_verification(
         &mut self,
+        payer_account_id: AccountId,
         email_blob: String,
         params: Option<serde_json::Value>,
     ) -> Promise {
@@ -67,6 +69,18 @@ impl EmailDkimVerifier {
             attached >= MIN_DEPOSIT,
             "Attach at least 0.01 NEAR for Outlayer execution"
         );
+
+        // Use a fixed amount to fund OutLayer, refund any excess back to the caller.
+        let outlayer_deposit = MIN_DEPOSIT;
+        let refund = attached.saturating_sub(outlayer_deposit);
+
+        if refund > 0 {
+            env::log_str(&format!(
+                "Refunding {} yoctoNEAR of unused DKIM fees to {}",
+                refund, caller
+            ));
+            Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
+        }
 
         let input_payload = json!({
             "email_blob": email_blob,
@@ -92,7 +106,7 @@ impl EmailDkimVerifier {
         });
 
         ext_outlayer::ext(OUTLAYER_CONTRACT_ID.parse().unwrap())
-            .with_attached_deposit(NearToken::from_yoctonear(attached))
+            .with_attached_deposit(NearToken::from_yoctonear(outlayer_deposit))
             .with_unused_gas_weight(1)
             .request_execution(
                 code_source,
@@ -100,7 +114,7 @@ impl EmailDkimVerifier {
                 input_payload,
                 None,
                 "Json".to_string(),
-                Some(caller.clone()),
+                Some(payer_account_id),
             )
             .then(
                 ext_self::ext(env::current_account_id())

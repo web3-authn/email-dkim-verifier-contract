@@ -23,6 +23,7 @@ The OutLayer WASI worker that fetches TXT records lives in the **root crate** (`
 #[payable]
 pub fn request_email_verification(
     &mut self,
+    payer_account_id: AccountId,
     email_blob: String,
     params: Option<serde_json::Value>,
 ) -> Promise
@@ -37,14 +38,14 @@ pub fn request_email_verification(
   Optional JSON blob forwarded to the OutLayer worker. Currently unused by the contract itself; reserved for caller‑specific metadata / future extensions.
 
 - Attached deposit  
-  - Must attach at least `MIN_DEPOSIT` (currently `0.01 NEAR`):
+  - Must attach at least `MIN_DEPOSIT` (currently `0.02 NEAR`):
     ```rust
     assert!(
         attached >= MIN_DEPOSIT,
-        "Attach at least 0.01 NEAR for Outlayer execution"
+        "Attach at least 0.02 NEAR for Outlayer execution"
     );
     ```
-  - This funds the OutLayer execution; unused funds are refunded at the end of the transaction.
+  - Exactly `MIN_DEPOSIT` is forwarded to OutLayer to fund the execution; any extra deposit attached to `request_email_verification` is immediately refunded back to the caller.
 
 - Return value  
   - Returns a `Promise`. The final outcome is the `VerificationResult` returned by the private callback:

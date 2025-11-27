@@ -166,21 +166,29 @@ pub fn canonicalize_headers_relaxed(
     signed_headers: &[String],
 ) -> String {
     let mut result = String::new();
-    let mut used = Vec::<usize>::new();
+    let mut used = vec![false; headers.len()];
 
+    // RFC 6376 §5.4.2: when multiple instances of a field are signed,
+    // they must be selected from the bottom of the header block upward.
     for signed in signed_headers {
-        for (idx, (name, value)) in headers.iter().enumerate() {
-            if used.contains(&idx) {
+        let mut selected: Option<usize> = None;
+        for idx in (0..headers.len()).rev() {
+            if used[idx] {
                 continue;
             }
+            let (name, _) = &headers[idx];
             if name.eq_ignore_ascii_case(signed) {
-                result.push_str(&name.to_ascii_lowercase());
-                result.push(':');
-                result.push_str(&canonicalize_header_relaxed(value.clone()));
-                result.push_str("\r\n");
-                used.push(idx);
+                selected = Some(idx);
                 break;
             }
+        }
+        if let Some(idx) = selected {
+            let (name, value) = &headers[idx];
+            result.push_str(&name.to_ascii_lowercase());
+            result.push(':');
+            result.push_str(&canonicalize_header_relaxed(value.clone()));
+            result.push_str("\r\n");
+            used[idx] = true;
         }
     }
 
@@ -255,57 +263,79 @@ pub fn parse_email_timestamp_ms(email: &str) -> Option<u64> {
 }
 
 pub fn build_canonicalized_dkim_header_relaxed(value: &str) -> String {
-    // Follow the approach from the reference DKIM implementation:
-    // locate the b= tag and remove its value, then apply relaxed
-    // header canonicalization to the resulting field value.
+    // Locate the b= tag and remove its value (handling optional FWS),
+    // then apply relaxed header canonicalization to the resulting field value.
 
-    #[derive(PartialEq)]
-    enum State {
-        B,
-        EqualSign,
-        Semicolon,
-    }
+    let bytes = value.as_bytes();
+    let mut b_value_start: Option<usize> = None;
+    let mut b_value_end: Option<usize> = None;
 
-    let mut state = State::B;
-    let mut b_idx = 0;
-    let mut b_end_idx = 0;
-    for (idx, c) in value.chars().enumerate() {
-        match state {
-            State::B => {
-                if c == 'b' {
-                    state = State::EqualSign;
-                }
+    let mut i = 0;
+    while i < bytes.len() {
+        // Skip leading WSP and semicolons between tags.
+        while i < bytes.len()
+            && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\r' || bytes[i] == b'\n')
+        {
+            i += 1;
+        }
+        if i < bytes.len() && bytes[i] == b';' {
+            i += 1;
+            continue;
+        }
+
+        if i >= bytes.len() {
+            break;
+        }
+
+        // Potential start of a tag name.
+        if bytes[i] == b'b' || bytes[i] == b'B' {
+            let mut j = i + 1;
+            // Skip optional FWS between "b" and "=".
+            while j < bytes.len()
+                && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\r' || bytes[j] == b'\n')
+            {
+                j += 1;
             }
-            State::EqualSign => {
-                if c == '=' {
-                    b_idx = idx + 1;
-                    state = State::Semicolon;
-                } else {
-                    state = State::B;
+            if j < bytes.len() && bytes[j] == b'=' {
+                // Move past "=" and any following FWS to the start of the value.
+                j += 1;
+                while j < bytes.len()
+                    && (bytes[j] == b' '
+                        || bytes[j] == b'\t'
+                        || bytes[j] == b'\r'
+                        || bytes[j] == b'\n')
+                {
+                    j += 1;
                 }
-            }
-            State::Semicolon => {
-                if c == ';' {
-                    b_end_idx = idx;
-                    break;
+                b_value_start = Some(j);
+
+                // The b= value runs until the next ";" or end of string.
+                let mut k = j;
+                while k < bytes.len() {
+                    if bytes[k] == b';' {
+                        break;
+                    }
+                    k += 1;
                 }
+                b_value_end = Some(k);
+                break;
             }
         }
+
+        // Not a b= tag here; advance one byte and continue scanning.
+        i += 1;
     }
 
-    if b_end_idx == 0 && state == State::Semicolon {
-        b_end_idx = value.len();
-    }
-
-    // Build the DKIM value with an empty b= tag.
-    let mut save = value
-        .get(..b_idx)
-        .map(|v| v.to_string())
-        .unwrap_or_default();
-    save.push_str(match value.get(b_end_idx..) {
-        Some(end) => end,
-        None => "",
-    });
+    let save = if let (Some(start), Some(end)) = (b_value_start, b_value_end) {
+        // Build the DKIM value with an empty b= tag.
+        let mut tmp = String::new();
+        tmp.push_str(&value[..start]);
+        tmp.push_str(&value[end..]);
+        tmp
+    } else {
+        // No b= tag detected; fall back to the original value.
+        value.to_string()
+    };
 
     let canon_value = canonicalize_header_relaxed(save);
     format!("dkim-signature:{}", canon_value)
