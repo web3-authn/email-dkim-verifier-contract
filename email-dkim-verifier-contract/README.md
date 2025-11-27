@@ -38,11 +38,11 @@ pub fn request_email_verification(
   Optional JSON blob forwarded to the OutLayer worker. Currently unused by the contract itself; reserved for caller‑specific metadata / future extensions.
 
 - Attached deposit  
-  - Must attach at least `MIN_DEPOSIT` (currently `0.02 NEAR`):
+  - Must attach at least `MIN_DEPOSIT` (currently `0.01 NEAR`):
     ```rust
     assert!(
         attached >= MIN_DEPOSIT,
-        "Attach at least 0.02 NEAR for Outlayer execution"
+        "Attach at least 0.01 NEAR for Outlayer execution"
     );
     ```
   - Exactly `MIN_DEPOSIT` is forwarded to OutLayer to fund the execution; any extra deposit attached to `request_email_verification` is immediately refunded back to the caller.

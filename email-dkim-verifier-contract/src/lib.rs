@@ -11,8 +11,10 @@ pub use crate::parsers::parse_dkim_tags;
 pub use crate::verify_dkim::verify_dkim;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
-const MIN_DEPOSIT: u128 = 2_000_000_000_000_000_000_000; // (0.02 NEAR)
-// actual measured fee: 1_019_100_000_000_000_000_000 // 0.01019 NEAR
+// Minimum deposit forwarded to OutLayer (0.01 NEAR).
+// OutLayer currently requires ~7.001e21 yoctoNEAR for the configured limits,
+// so 1e22 yoctoNEAR provides a safe margin.
+const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 
 #[near(contract_state)]
 pub struct EmailDkimVerifier;
