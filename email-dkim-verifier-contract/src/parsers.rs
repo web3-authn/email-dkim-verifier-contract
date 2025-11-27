@@ -1,3 +1,4 @@
+use chrono::{DateTime, FixedOffset};
 use near_sdk::AccountId;
 
 pub fn extract_header_value(email: &str, header_name: &str) -> Option<String> {
@@ -242,6 +243,17 @@ pub fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
         .map(|(_, v)| v.clone())
 }
 
+pub fn parse_email_timestamp_ms(email: &str) -> Option<u64> {
+    let date_value = extract_header_value(email, "Date")?;
+    let dt = DateTime::<FixedOffset>::parse_from_rfc2822(&date_value).ok()?;
+    let ms = dt.timestamp_millis();
+    if ms < 0 {
+        None
+    } else {
+        Some(ms as u64)
+    }
+}
+
 pub fn build_canonicalized_dkim_header_relaxed(value: &str) -> String {
     // Follow the approach from the reference DKIM implementation:
     // locate the b= tag and remove its value, then apply relaxed
@@ -303,6 +315,7 @@ pub fn build_canonicalized_dkim_header_relaxed(value: &str) -> String {
 mod tests {
     use super::*;
     use base64;
+    use chrono::{DateTime, FixedOffset};
     use rsa::pkcs8::DecodePublicKey;
     use rsa::sha2::{Digest, Sha256};
     use rsa::RsaPublicKey;
@@ -334,5 +347,19 @@ mod tests {
         let p_b64 = tags.get("p").expect("p tag");
         let pk_bytes = base64::decode(p_b64).expect("p base64");
         RsaPublicKey::from_public_key_der(&pk_bytes).expect("valid RSA public key");
+    }
+
+    #[test]
+    fn gmail_reset_full_email_timestamp_matches_date_header() {
+        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+
+        let ts_ms = parse_email_timestamp_ms(email_blob).expect("email timestamp");
+
+        let date_value = extract_header_value(email_blob, "Date").expect("Date header");
+        let dt = DateTime::<FixedOffset>::parse_from_rfc2822(&date_value)
+            .expect("parse RFC 2822 Date header");
+        let expected_ms = dt.timestamp_millis();
+        assert!(expected_ms >= 0);
+        assert_eq!(ts_ms, expected_ms as u64);
     }
 }

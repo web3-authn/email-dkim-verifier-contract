@@ -1,7 +1,7 @@
 mod parsers;
 mod verify_dkim;
 
-use crate::parsers::{extract_header_value, parse_recover_subject};
+use crate::parsers::{extract_header_value, parse_email_timestamp_ms, parse_recover_subject};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
 use near_sdk::{env, ext_contract, near, AccountId, NearToken, Promise, PromiseError};
@@ -22,6 +22,7 @@ pub struct VerificationResult {
     pub verified: bool,
     pub account_id: Option<String>,
     pub new_public_key: Option<String>,
+    pub email_timestamp_ms: Option<u64>,
 }
 
 #[ext_contract(ext_outlayer)]
@@ -123,6 +124,7 @@ impl EmailDkimVerifier {
                     verified: false,
                     account_id: None,
                     new_public_key: None,
+                    email_timestamp_ms: None,
                 }
             }
         };
@@ -133,6 +135,7 @@ impl EmailDkimVerifier {
                 verified: false,
                 account_id: None,
                 new_public_key: None,
+                email_timestamp_ms: None,
             };
         }
 
@@ -152,6 +155,7 @@ impl EmailDkimVerifier {
                 verified: false,
                 account_id: None,
                 new_public_key: None,
+                email_timestamp_ms: None,
             };
         }
 
@@ -162,6 +166,7 @@ impl EmailDkimVerifier {
                 verified: false,
                 account_id: None,
                 new_public_key: None,
+                email_timestamp_ms: None,
             };
         }
 
@@ -174,10 +179,13 @@ impl EmailDkimVerifier {
             None => (None, None),
         };
 
+        let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
+
         VerificationResult {
             verified: true,
             account_id,
             new_public_key,
+            email_timestamp_ms,
         }
     }
 }

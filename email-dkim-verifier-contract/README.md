@@ -55,6 +55,7 @@ pub fn request_email_verification(
         pub verified: bool,
         pub account_id: Option<String>,
         pub new_public_key: Option<String>,
+        pub email_timestamp_ms: Option<u64>,
     }
 
     #[private]
@@ -73,6 +74,9 @@ pub fn request_email_verification(
       - `account_id`: `Some("user.testnet".to_string())`
       - `new_public_key`: `Some("ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx".to_string())`
     - Otherwise they are `None`, and callers can treat the result as “DKIM verified, but no recover instruction embedded in Subject”.
+  - `email_timestamp_ms`:
+    - Parsed from the `Date:` header using RFC 2822 parsing and converted to milliseconds since Unix epoch (UTC).
+    - `None` if the `Date:` header is missing or can’t be parsed.
 
 Typical usage from another contract:
 
