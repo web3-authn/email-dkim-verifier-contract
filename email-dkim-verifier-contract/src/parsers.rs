@@ -33,9 +33,9 @@ pub fn extract_header_value(email: &str, header_name: &str) -> Option<String> {
     None
 }
 
-pub fn parse_recover_subject(subject: &str) -> Option<(AccountId, String)> {
+pub fn parse_recover_subject(subject: &str) -> Option<AccountId> {
     let subject = subject.trim();
-    let mut parts = subject.split('|');
+    let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
     if kind != "recover" {
@@ -43,25 +43,12 @@ pub fn parse_recover_subject(subject: &str) -> Option<(AccountId, String)> {
     }
 
     let account_id_str = parts.next()?.trim();
-    let key_str = parts.next()?.trim();
-
-    if parts.next().is_some() {
-        return None;
-    }
-
-    if !key_str.starts_with("ed25519:") {
-        return None;
-    }
-    if key_str.len() <= "ed25519:".len() {
-        return None;
-    }
-
     let account_id: AccountId = match account_id_str.parse() {
         Ok(a) => a,
         Err(_) => return None,
     };
 
-    Some((account_id, key_str.to_string()))
+    Some(account_id)
 }
 
 pub fn parse_dkim_tags(value: &str) -> std::collections::HashMap<String, String> {
@@ -324,6 +311,17 @@ pub fn parse_email_timestamp_ms(email: &str) -> Option<u64> {
     Some(ms as u64)
 }
 
+pub fn parse_recover_public_key_from_body(email: &str) -> Option<String> {
+    let (_, body) = split_headers_body(email);
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("ed25519:") && trimmed.len() > "ed25519:".len() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
 fn is_leap_year(year: i32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
@@ -498,5 +496,19 @@ mod tests {
 
         let ts_ms = parse_email_timestamp_ms(email_blob);
         assert!(ts_ms.is_some(), "expected email timestamp to parse");
+    }
+
+    #[test]
+    fn parse_recover_subject_and_body_key() {
+        let subject = "recover alice.testnet";
+        let account_id = parse_recover_subject(subject).expect("account id");
+        assert_eq!(account_id.as_str(), "alice.testnet");
+
+        let email = "From: alice@example.com\n\
+Subject: recover alice.testnet\n\
+\n\
+ed25519:NEW_PUBLIC_KEY\n";
+        let key = parse_recover_public_key_from_body(email).expect("key");
+        assert_eq!(key, "ed25519:NEW_PUBLIC_KEY");
     }
 }

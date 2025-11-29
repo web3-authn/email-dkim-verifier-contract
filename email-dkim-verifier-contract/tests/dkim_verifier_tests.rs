@@ -71,8 +71,8 @@ fn real_gmail_dns_p_parses_as_rsa_key() {
 fn modifying_subject_breaks_dkim() {
     let email_blob = include_str!("data/gmail_reset_full.eml");
     let modified = email_blob.replacen(
-        "Subject: reset|bob.near|ed25519:xxxxxxxxxxxyz",
-        "Subject: reset|alice.near|ed25519:xxxxxxxxxxxyz",
+        "Subject: recover berp61.w3a-v1.testnet",
+        "Subject: recover alice.testnet",
         1,
     );
     assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
@@ -81,7 +81,11 @@ fn modifying_subject_breaks_dkim() {
 #[test]
 fn modifying_body_plain_text_breaks_dkim() {
     let email_blob = include_str!("data/gmail_reset_full.eml");
-    let modified = email_blob.replacen("test9", "test9-modified", 1);
+    let modified = email_blob.replacen(
+        "HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy",
+        "HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEz",
+        1,
+    );
     assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
 }
 
@@ -95,4 +99,3 @@ fn modifying_from_breaks_dkim() {
     );
     assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
 }
-

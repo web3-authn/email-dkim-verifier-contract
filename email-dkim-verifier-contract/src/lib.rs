@@ -1,7 +1,10 @@
 mod parsers;
 mod verify_dkim;
 
-use crate::parsers::{extract_header_value, parse_email_timestamp_ms, parse_recover_subject};
+use crate::parsers::{
+    extract_header_value, parse_email_timestamp_ms, parse_recover_public_key_from_body,
+    parse_recover_subject,
+};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
 use near_sdk::{env, ext_contract, near, AccountId, NearToken, Promise, PromiseError};
@@ -187,13 +190,12 @@ impl EmailDkimVerifier {
         }
 
         let subject = extract_header_value(&email_blob, "Subject");
-        let (account_id, new_public_key) = match subject
+        let account_id = subject
             .as_deref()
             .and_then(|s| parse_recover_subject(s))
-        {
-            Some((account_id, key)) => (Some(account_id.to_string()), Some(key)),
-            None => (None, None),
-        };
+            .map(|a| a.to_string());
+
+        let new_public_key = parse_recover_public_key_from_body(&email_blob);
 
         let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
 
