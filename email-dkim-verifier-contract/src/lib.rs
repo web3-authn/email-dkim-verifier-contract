@@ -2,8 +2,8 @@ mod parsers;
 mod verify_dkim;
 
 use crate::parsers::{
-    extract_header_value, parse_email_timestamp_ms, parse_recover_public_key_from_body,
-    parse_recover_subject,
+    extract_header_value, parse_email_timestamp_ms, parse_recover_instruction,
+    parse_recover_public_key_from_body, parse_recover_subject,
 };
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
@@ -28,6 +28,7 @@ pub struct VerificationResult {
     pub verified: bool,
     pub account_id: String,
     pub new_public_key: String,
+    pub from_address: String,
     pub email_timestamp_ms: Option<u64>,
 }
 
@@ -143,6 +144,7 @@ impl EmailDkimVerifier {
                     verified: false,
                     account_id: String::new(),
                     new_public_key: String::new(),
+                    from_address: String::new(),
                     email_timestamp_ms: None,
                 }
             }
@@ -154,6 +156,7 @@ impl EmailDkimVerifier {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
+                from_address: String::new(),
                 email_timestamp_ms: None,
             };
         }
@@ -174,6 +177,7 @@ impl EmailDkimVerifier {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
+                from_address: String::new(),
                 email_timestamp_ms: None,
             };
         }
@@ -185,18 +189,31 @@ impl EmailDkimVerifier {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
+                from_address: String::new(),
                 email_timestamp_ms: None,
             };
         }
 
         let subject = extract_header_value(&email_blob, "Subject");
-        let account_id = subject
-            .as_deref()
-            .and_then(|s| parse_recover_subject(s))
-            .map(|a| a.to_string())
-            .unwrap_or_default();
 
-        let new_public_key = parse_recover_public_key_from_body(&email_blob).unwrap_or_default();
+        // Primary: parse both account_id and key from the Subject line.
+        // Fallback: legacy format with account_id in Subject and key in body.
+        let (account_id, new_public_key) = if let Some(s) = subject.as_deref() {
+            if let Some((acc, pk)) = parse_recover_instruction(s) {
+                (acc.to_string(), pk)
+            } else {
+                let acc = parse_recover_subject(s)
+                    .map(|a| a.to_string())
+                    .unwrap_or_default();
+                let pk = parse_recover_public_key_from_body(&email_blob).unwrap_or_default();
+                (acc, pk)
+            }
+        } else {
+            let pk = parse_recover_public_key_from_body(&email_blob).unwrap_or_default();
+            (String::new(), pk)
+        };
+
+        let from_address = extract_header_value(&email_blob, "From").unwrap_or_default();
 
         let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
 
@@ -204,6 +221,7 @@ impl EmailDkimVerifier {
             verified: true,
             account_id,
             new_public_key,
+            from_address,
             email_timestamp_ms,
         }
     }
@@ -249,6 +267,7 @@ mod tests {
             result.new_public_key,
             "ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy"
         );
+        assert_eq!(result.from_address, "Pta <n6378056@gmail.com>");
         assert!(result.email_timestamp_ms.is_some());
     }
 }

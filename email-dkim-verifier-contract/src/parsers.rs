@@ -51,6 +51,38 @@ pub fn parse_recover_subject(subject: &str) -> Option<AccountId> {
     Some(account_id)
 }
 
+/// Parse both account_id and public key from a recovery Subject header.
+///
+/// Expected primary format:
+///   "recover <account_id> ed25519:<public_key>"
+pub fn parse_recover_instruction(subject: &str) -> Option<(AccountId, String)> {
+    let subject = subject.trim();
+    let mut parts = subject.split_whitespace();
+
+    let kind = parts.next()?;
+    if kind != "recover" {
+        return None;
+    }
+
+    let account_id_str = parts.next()?.trim();
+    let account_id: AccountId = match account_id_str.parse() {
+        Ok(a) => a,
+        Err(_) => return None,
+    };
+
+    // Scan remaining tokens for an ed25519:<pk> token.
+    let mut new_public_key: Option<String> = None;
+    for token in parts {
+        if token.starts_with("ed25519:") && token.len() > "ed25519:".len() {
+            new_public_key = Some(token.to_string());
+            break;
+        }
+    }
+
+    let new_public_key = new_public_key?;
+    Some((account_id, new_public_key))
+}
+
 pub fn parse_dkim_tags(value: &str) -> std::collections::HashMap<String, String> {
     let mut tags = std::collections::HashMap::new();
     let unfolded = value.replace("\r\n", " ");
@@ -500,15 +532,18 @@ mod tests {
 
     #[test]
     fn parse_recover_subject_and_body_key() {
-        let subject = "recover alice.testnet";
-        let account_id = parse_recover_subject(subject).expect("account id");
+        let subject = "recover alice.testnet ed25519:NEW_PUBLIC_KEY";
+
+        let (account_id, key_from_subject) =
+            parse_recover_instruction(subject).expect("instruction");
         assert_eq!(account_id.as_str(), "alice.testnet");
+        assert_eq!(key_from_subject, "ed25519:NEW_PUBLIC_KEY");
 
         let email = "From: alice@example.com\n\
-Subject: recover alice.testnet\n\
+Subject: recover alice.testnet ed25519:NEW_PUBLIC_KEY\n\
 \n\
 ed25519:NEW_PUBLIC_KEY\n";
-        let key = parse_recover_public_key_from_body(email).expect("key");
-        assert_eq!(key, "ed25519:NEW_PUBLIC_KEY");
+        let key_from_body = parse_recover_public_key_from_body(email).expect("key");
+        assert_eq!(key_from_body, "ed25519:NEW_PUBLIC_KEY");
     }
 }
