@@ -26,8 +26,8 @@ pub struct EmailDkimVerifier;
 #[serde(crate = "near_sdk::serde")]
 pub struct VerificationResult {
     pub verified: bool,
-    pub account_id: Option<String>,
-    pub new_public_key: Option<String>,
+    pub account_id: String,
+    pub new_public_key: String,
     pub email_timestamp_ms: Option<u64>,
 }
 
@@ -141,8 +141,8 @@ impl EmailDkimVerifier {
             _ => {
                 return VerificationResult {
                     verified: false,
-                    account_id: None,
-                    new_public_key: None,
+                    account_id: String::new(),
+                    new_public_key: String::new(),
                     email_timestamp_ms: None,
                 }
             }
@@ -152,8 +152,8 @@ impl EmailDkimVerifier {
             env::log_str(&format!("DKIM DNS fetch error: {err}"));
             return VerificationResult {
                 verified: false,
-                account_id: None,
-                new_public_key: None,
+                account_id: String::new(),
+                new_public_key: String::new(),
                 email_timestamp_ms: None,
             };
         }
@@ -172,8 +172,8 @@ impl EmailDkimVerifier {
         if record_strings.is_empty() {
             return VerificationResult {
                 verified: false,
-                account_id: None,
-                new_public_key: None,
+                account_id: String::new(),
+                new_public_key: String::new(),
                 email_timestamp_ms: None,
             };
         }
@@ -183,8 +183,8 @@ impl EmailDkimVerifier {
         if !verified {
             return VerificationResult {
                 verified: false,
-                account_id: None,
-                new_public_key: None,
+                account_id: String::new(),
+                new_public_key: String::new(),
                 email_timestamp_ms: None,
             };
         }
@@ -193,9 +193,10 @@ impl EmailDkimVerifier {
         let account_id = subject
             .as_deref()
             .and_then(|s| parse_recover_subject(s))
-            .map(|a| a.to_string());
+            .map(|a| a.to_string())
+            .unwrap_or_default();
 
-        let new_public_key = parse_recover_public_key_from_body(&email_blob);
+        let new_public_key = parse_recover_public_key_from_body(&email_blob).unwrap_or_default();
 
         let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
 
@@ -211,5 +212,43 @@ impl EmailDkimVerifier {
 impl Default for EmailDkimVerifier {
     fn default() -> Self {
         env::panic_str("Contract is not initialized");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use near_sdk::serde_json::json;
+
+    fn real_gmail_dns_record() -> String {
+        "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntvSKT1hkqhKe0xcaZ0x+QbouDsJuBfby/S82jxsoC/SodmfmVs2D1KAH3mi1AqdMdU12h2VfETeOJkgGYq5ljd996AJ7ud2SyOLQmlhaNHH7Lx+Mdab8/zDN1SdxPARDgcM7AsRECHwQ15R20FaKUABGu4NTbR2fDKnYwiq5jQyBkLWP+LgGOgfUF4T4HZb2PY2bQtEP6QeqOtcW4rrsH24L7XhD+HSZb1hsitrE0VPbhJzxDwI4JF815XMnSVjZgYUXP8CxI1Y0FONlqtQYgsorZ9apoW1KPQe8brSSlRsi9sXB/tu56LmG7tEDNmrZ5XUwQYUUADBOu7t1niwXwIDAQAB".to_string()
+    }
+
+    #[test]
+    fn on_email_verification_result_returns_account_and_key() {
+        let mut contract = EmailDkimVerifier;
+        let email_blob = include_str!("../tests/data/gmail_reset_full.eml").to_string();
+
+        let outlayer_value = json!({
+            "domain": "gmail.com",
+            "error": null,
+            "records": [ real_gmail_dns_record() ],
+            "selector": "20230601"
+        });
+
+        let requested_by: AccountId = "caller.testnet".parse().unwrap();
+        let result = contract.on_email_verification_result(
+            requested_by,
+            email_blob,
+            Ok(Some(outlayer_value)),
+        );
+
+        assert!(result.verified);
+        assert_eq!(result.account_id, "berp61.w3a-v1.testnet");
+        assert_eq!(
+            result.new_public_key,
+            "ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy"
+        );
+        assert!(result.email_timestamp_ms.is_some());
     }
 }

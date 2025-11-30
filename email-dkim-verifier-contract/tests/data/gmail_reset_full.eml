@@ -1,96 +1,103 @@
-Received: from mail-vk1-xa29.google.com (2607:f8b0:4864:20::a29)
-        by cloudflare-email.net (cloudflare) id CcllsYr5h2gK
-        for <reset@web3authn.org>; Sat, 29 Nov 2025 04:32:33 +0000
+Received: from mail-vk1-xa34.google.com (2607:f8b0:4864:20::a34)
+        by cloudflare-email.net (cloudflare) id QZ8nwQ0ScxOF
+        for <recover@web3authn.org>; Sat, 29 Nov 2025 05:04:01 +0000
 ARC-Seal: i=1; a=rsa-sha256; s=cf2024-1; d=cloudflare-email.net; cv=none;
-	b=X4sfj0auQIy3TrSnID5faiqXswct5cZJ+KAJnd/onfIni9z/JhAHK/ZIBzGk/UhsJXo+UCyJD
-	dRJdJlpKm8/PDzW76xo5BwpvGy/g/G85gsmIn/S+x0sTOOnxmTBMqlRFI5GcMARvnXATfxGWR/Y
-	O3IRQMgaytqPJsxGLB3QGM9zSwDRKHus4/22Ux9EmD1KQ7xz4kcmv97Rs9D632jWGD4UewpDmUh
-	9IHZAzV6nawaBqkUZOV8MH4kvlbllCTme6Z3Za7kLrlYYepuj6aHaFoxw0FMkuazFIZhekNOJek
-	NRZXhMvPIDJchuT0U1pMY4mxud1pwuFi9hZtOOajzsdw==;
+	b=PQ7uR1P2AtL4oXrTtQxGyB8lMBEkmmWDpB/hi1gBrfNBiA9csUy+zWuiFJZ2p33KAVpwQKIkq
+	nRqtkFmiqFGneWrnMt8w7RGiS+PJKGQpFpu0ag6tPhHDPdxD9vvxozDI7KOjnqAUIt9psqhLX6R
+	7uc2NBhDaDQlDb6nVR6jgHsYRxpLmrbMkL75//WHJqryCkWU46oFgvOZwMzjVjR3q29/gTiRotA
+	jCJmweXp03vonVrPU+8q3xYY37HmDYgCAQNxrq3CSvINfzc0v8nimhoEMmlyeVUtx6+Ahp/afLE
+	CMKamMchprfN+89A7l31iRZVAdTnsr4G83TBCOMHarkg==;
 ARC-Message-Signature: i=1; a=rsa-sha256; s=cf2024-1; d=cloudflare-email.net; c=relaxed/relaxed;
 	h=To:Subject:Date:From:reply-to:cc:resent-date:resent-from:resent-to
 	:resent-cc:in-reply-to:references:list-id:list-help:list-subscribe
-	:list-post:list-owner:list-archive; t=1764390753; x=1764995553; bh=1H7CPud6
-	6JVY8+zYQkSKjRQLqNu5PtW7ZMKanQSboWI=; b=TKFQ/UBksnsAa8IK3VzunbgrZQw//UgdtLd
-	/W8TLgbHyXvS7fIi04ylE0+IZG3b0HWqh6ylyu34Fyw8e059GvmuoaAAdJAY6GWCnsn2uyUlMNe
-	AjMtP0XoEiSmmJCCdikXyNqb3ahZY5ZbUQ04A4QuZ0ZAxJRoXAL82CzrFTWKTyy4hc1G1vdZiip
-	SkgULCJIn+mPUh3fl3tNYidNkBrjHKYq8nJeX91UpkSEeLlugbsD/HXMEfboYyE61VU1eKCQjOK
-	Gu2HoLfPTqtsAbhr8vN0sg6xTteUw3pILpp99xbfhzseXsxrzl2/rP4/rYjTcAAUpxPMt0KQZ0V
-	Ls0fsFg==;
+	:list-post:list-owner:list-archive; t=1764392641; x=1764997441; bh=K1EJN2QI
+	iq2eZophwjq8M4PqrGkFRuchmMjIYzZNjlU=; b=GSAAs/En59hmaQ5knW5tQCPcYQu1gi+GOhv
+	fo1m4qphI61m03ZYmt2Hy5M9PpId4T8A1Qrx3I2g4UezzfDt6KBWUocpSAOB2+2IKWcj9CR6fOR
+	Cm+si0vNtSbIt+Ucn8TwY+yw3qeVarHovjfJi5lmFLhlkh7MJVuanGTZ14r/vnwJqBBiuF/45u7
+	RqLrcQbKEEKtBjyB3yMoUxzzRwfo24C7QOPewWjd1WjYQF7+wkuL53iwrzFgsucfZZuJU2ragxg
+	YxNZEW0S1cn7tok7h9N/YOD8gzJN+tA0m0eRZSnA1ksNDu5MctkPJcnSLnJlN4y+edqMK8Qmtpq
+	NXw9fgg==;
 ARC-Authentication-Results: i=1; mx.cloudflare.net;
-	dkim=pass header.d=gmail.com header.s=20230601 header.b=dM4dF6Vo;
+	dkim=pass header.d=gmail.com header.s=20230601 header.b=NZnMHFNp;
 	dmarc=pass header.from=gmail.com policy.dmarc=none;
-	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-vk1-xa29.google.com) smtp.helo=mail-vk1-xa29.google.com;
-	spf=pass (mx.cloudflare.net: domain of n6378056@gmail.com designates 2607:f8b0:4864:20::a29 as permitted sender) smtp.mailfrom=n6378056@gmail.com;
-	arc=none smtp.remote-ip=2607:f8b0:4864:20::a29
-Received-SPF: pass (mx.cloudflare.net: domain of n6378056@gmail.com designates 2607:f8b0:4864:20::a29 as permitted sender)
-	receiver=mx.cloudflare.net; client-ip=2607:f8b0:4864:20::a29; envelope-from="n6378056@gmail.com"; helo=mail-vk1-xa29.google.com;
+	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-vk1-xa34.google.com) smtp.helo=mail-vk1-xa34.google.com;
+	spf=pass (mx.cloudflare.net: domain of n6378056@gmail.com designates 2607:f8b0:4864:20::a34 as permitted sender) smtp.mailfrom=n6378056@gmail.com;
+	arc=none smtp.remote-ip=2607:f8b0:4864:20::a34
+Received-SPF: pass (mx.cloudflare.net: domain of n6378056@gmail.com designates 2607:f8b0:4864:20::a34 as permitted sender)
+	receiver=mx.cloudflare.net; client-ip=2607:f8b0:4864:20::a34; envelope-from="n6378056@gmail.com"; helo=mail-vk1-xa34.google.com;
 Authentication-Results: mx.cloudflare.net;
-	dkim=pass header.d=gmail.com header.s=20230601 header.b=dM4dF6Vo;
+	dkim=pass header.d=gmail.com header.s=20230601 header.b=NZnMHFNp;
 	dmarc=pass header.from=gmail.com policy.dmarc=none;
-	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-vk1-xa29.google.com) smtp.helo=mail-vk1-xa29.google.com;
-	spf=pass (mx.cloudflare.net: domain of n6378056@gmail.com designates 2607:f8b0:4864:20::a29 as permitted sender) smtp.mailfrom=n6378056@gmail.com;
-	arc=none smtp.remote-ip=2607:f8b0:4864:20::a29
-Received: by mail-vk1-xa29.google.com with SMTP id 71dfb90a1353d-55b22d3b2a6so1519670e0c.1
-        for <reset@web3authn.org>; Fri, 28 Nov 2025 20:32:33 -0800 (PST)
+	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-vk1-xa34.google.com) smtp.helo=mail-vk1-xa34.google.com;
+	spf=pass (mx.cloudflare.net: domain of n6378056@gmail.com designates 2607:f8b0:4864:20::a34 as permitted sender) smtp.mailfrom=n6378056@gmail.com;
+	arc=none smtp.remote-ip=2607:f8b0:4864:20::a34
+Received: by mail-vk1-xa34.google.com with SMTP id 71dfb90a1353d-5599b119b4aso604598e0c.0
+        for <recover@web3authn.org>; Fri, 28 Nov 2025 21:04:01 -0800 (PST)
 DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
-        d=gmail.com; s=20230601; t=1764390753; x=1764995553; darn=web3authn.org;
+        d=gmail.com; s=20230601; t=1764392641; x=1764997441; darn=web3authn.org;
         h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
          :date:message-id:reply-to;
-        bh=1H7CPud66JVY8+zYQkSKjRQLqNu5PtW7ZMKanQSboWI=;
-        b=dM4dF6VoaDhw+C7rNk8z7PZOReWWwhmVjXqLLrQ/2TWVKQ+76LIkvJrVshMNtGGeTs
-         Gl+Kr7j7eGRSVoqkJA9yqiD3v/Dh+R1WhQ8zrxcRqer5CXctjQTaof1bNk5+1Appy2iC
-         ocsGL/8CRztDVXDAR1GmVYhN63UYmLRzluPAx1lyfEznuTEn1ydjCjBc9oygVdHFGYMc
-         j+zoquX4qF+cdmkOmERLzXasQ9Ignr135og1lTk+FdmUTBD9izmAkq97w/y0XU+bf8KQ
-         0kbfd5op6kVFFskwnpq0li/nTebGeBt2LDPX2ilw5F/jn1JZsZSjTyYhQ8sZPiTgmNP3
-         Bdtw==
+        bh=K1EJN2QIiq2eZophwjq8M4PqrGkFRuchmMjIYzZNjlU=;
+        b=NZnMHFNpiToyXi3bx9356ISQYaG5evHz9XL/HC2cnkFZie/Ovgcm6ajFSeZ3LHagZR
+         d7PKNc6zoNISL+MaWUDVBSUTp9YBkLsrmu99l3zUo4dOYLYYkoRvDX7YY6+LFWPboIA6
+         u4g5lWK2M3YhdjEc6+Hxkz1CEZWfjzPv2A962WaJnX9jseJYMyRyn1m84DiksAc502qm
+         ELIg51tdQzCl3N6yMgordmaAVSRr4obGWH/AV7s9h+9SPwSuwCC81VVPIUk2R4NSunCZ
+         UrrEBzyhKMmyUgEn+PDs9opEaN9q+urbg21srueoA7Fb9/fgk+wAYndAL/c/vAp+A4CC
+         eP9A==
 X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
-        d=1e100.net; s=20230601; t=1764390753; x=1764995553;
+        d=1e100.net; s=20230601; t=1764392641; x=1764997441;
         h=to:subject:message-id:date:from:mime-version:x-gm-gg
          :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to;
-        bh=1H7CPud66JVY8+zYQkSKjRQLqNu5PtW7ZMKanQSboWI=;
-        b=KlfuoP9Jufa4NtlvKNDrkZZufKwPOeuBk6jb/Q4xb7TtNOZ3d8Ce3ZipiCfRljah0Z
-         BNLLsFl2K84UVO3GlEkPZz7wXmszMk/V0kvO80vHdKKbpv9wenk0gmepuJ/+Bp3ONLsN
-         WzxmF9p4c6atACxtAFC/7gAqBA2Krt8NlL4Y1y74MnyHosSNC43qwLmzqJjNPQ6xEv4e
-         MGtpQuuoYvi0TMSJpOUjJENyc97DjW/RRdGOjQqCPtZ27xITv2q6TNM7/zDFcCAQ55X8
-         KHE3Z+rbyKhfUzqjbtRZtMOPp17ZkJnzgIfkzSHQ055wjwx4WQbHZGKe1y0fpV+EbrFL
-         EyEA==
-X-Gm-Message-State: AOJu0YzsSPAw6CMinpGztD8ul9DKKwVb+ex3xX88NuiLzh658Yy5HNlM
-	4IwOg2OXiJcMrGAvNE85+R7NQuMTLz2Akzwj0LqNpT+DK0wORF96ReRDBuJGwzHfcUxcibMun4V
-	qup7pj5HIHD+LJvV+9V/hlJg3xslHRdUn6wnv
-X-Gm-Gg: ASbGnct6dmJDdTwznV6sbspCMkE2LXatdSW22lCyIowri1BKRmE8ajlJQCk65XFYg34
-	uR/Jze1CpnY/g6yZuiM/82HZvnZKx57moP9Ek09kFfw8icN9KKwEUjEDm0kcdxdOIYEMK3hbxZw
-	r/RSC1xzwqNFlnrrGsYE0wndygOM3qNyOMD6uHv5z8La8E7SXg4Y2qXkl37SSmIbsOzVtHWS9jv
-	aZNbdH/Dj9xpG1G9De+lmp4ZZmf+HVqSxeXw0jRikoFzR4f4Uxel/HtogjBgLBUw7PE9VkzGe6Z
-	L80qsz2fbguZKLn5ivUP18Nk3eY=
-X-Google-Smtp-Source: AGHT+IH6wk7TbnZjBrB97XtYAh/QqrbcUFnsOO7epU+0yG6AVQc3o9HS4UKYVK98j94QMsX5KzpqMR0nzWmgnegAJ5U=
-X-Received: by 2002:a05:6122:1829:b0:54a:a3b1:db63 with SMTP id
- 71dfb90a1353d-55b8d7bb78emr13094376e0c.6.1764390752878; Fri, 28 Nov 2025
- 20:32:32 -0800 (PST)
+        bh=K1EJN2QIiq2eZophwjq8M4PqrGkFRuchmMjIYzZNjlU=;
+        b=CWs/JXppMb43n0Qq/RQdsBhE2SbmWMSC2E2pZans0iDE7Q7+MHr99olVVHMfRT/ZH8
+         L7cJCcAevxwQMiKihYTwUzQoaKHUneWchkAP7E1A7SUCW7UXmcVQ6o6bkSUAJfmD0Adt
+         i2V5kbETetTqlxJT0hY6hcSEgi/WaGFYqK2n/JFPciP08Bz8vUkNXmEHbndznHhcb5Hi
+         3Wyx3qp18/T1xVdCFZhAfDQSa1UKDIv/6zr8/8GOjsj7OJMLjdd+UpdeHc5DjLyCw0eA
+         H3raMqmwbbwa/P+OB37BojZkP1gx/i8nZJsTCz3nx3D6/RZbVE2U0c1l9V9s7+4eoC2v
+         PG0w==
+X-Gm-Message-State: AOJu0YzlXeKVXLT35weTYLxSTnoEmdeYgi8bwI7TRTlNlr4VE07NDnr8
+	rghKPe/Pa9sk2kUk6cLNCVXnk1VoiJNC8bHYCncpkN3XVyc/VMMM1u1lREFU9HFVXVlxWXF9S7W
+	SRprvyjjq2LgurDkygR5++kGYBUF2hoeQ5rFw
+X-Gm-Gg: ASbGncvK28hwzusiy84eE2AABN0l+7J7JVUMx9sHSwN7lHHf+sCCH2vQNEy0X6xg1S6
+	fu6OhY2nRoGe7CfNyO6QKJrLygE/jmNAKh45njVezdPOR1GByTtYq9SPp3GhotwACcyrrxt3tx3
+	U6rJ8TgRHBH2sk8NwWqYiKn0HJO5bthf2OPXzCCc/E/Hy8L4AXObI8hacVZfCXAtGuH9WgvqfJl
+	5LticeL/jWqdU1y8wzGb4cbJ4nA5Rf7AI9rJeaIaazP2evRsxO9WEescSf59D9xnWPT63stzMut
+	dpZyUNlBDF0lEe7aW5UZiJUjcXU=
+X-Google-Smtp-Source: AGHT+IE19/H2o30ktd9rHEIsXa4WhrPJ9MQ8VnANl7OKHcuTFNR9BEfsBtTPEobAUvCPh3WD3qy/ryUmx+bOgmhl3Ko=
+X-Received: by 2002:a05:6122:608b:b0:54a:a178:3c9f with SMTP id
+ 71dfb90a1353d-55b8d7a12femr10546251e0c.15.1764392640944; Fri, 28 Nov 2025
+ 21:04:00 -0800 (PST)
 MIME-Version: 1.0
 From: Pta <n6378056@gmail.com>
-Date: Sat, 29 Nov 2025 13:32:22 +0900
-X-Gm-Features: AWmQ_bln9OFzukAGUD2GFWkMcpobtoNsNul7L-3T5ATFyA9spQRNk1CuY5hZxhU
-Message-ID: <CAHUSCDSFSb1p6Hut5MzNiDQp2ujRKkSi_5Jk8XnzgCF-hL8ZoA@mail.gmail.com>
+Date: Sat, 29 Nov 2025 14:03:50 +0900
+X-Gm-Features: AWmQ_bn3p3NOKXPF7DXljAIpAr9GOK1onuMv74I3sxAHC0S2cBnrMiKrCIQUZVs
+Message-ID: <CAHUSCDREBTWp_3UooKLq=AisPrHD1P-JbgVyWGLaxNxWUt9DfA@mail.gmail.com>
 Subject: recover berp61.w3a-v1.testnet
-To: reset@web3authn.org
-Content-Type: multipart/alternative; boundary="0000000000001204420644b43c1a"
+To: recover@web3authn.org
+Content-Type: multipart/alternative; boundary="0000000000009b9da50644b4ac80"
 
---0000000000001204420644b43c1a
+--0000000000009b9da50644b4ac80
 Content-Type: text/plain; charset="UTF-8"
 
-HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy
+ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy
 
---0000000000001204420644b43c1a
+--0000000000009b9da50644b4ac80
 Content-Type: text/html; charset="UTF-8"
 Content-Transfer-Encoding: quoted-printable
 
-<div dir=3D"ltr"><span style=3D"color:rgb(31,31,31);font-family:&quot;Googl=
-e Sans&quot;,Roboto,RobotoDraft,Helvetica,Arial,sans-serif;font-size:22px;f=
-ont-variant-ligatures:no-contextual">HPHNMfHwmBJSqcArYZ5ptTZpukvFoM</span><=
-span style=3D"color:rgb(31,31,31);font-family:&quot;Google Sans&quot;,Robot=
-o,RobotoDraft,Helvetica,Arial,sans-serif;font-size:22px;font-variant-ligatu=
-res:no-contextual">tuU8TcV2T7mEEy</span></div>
+<div dir=3D"ltr"><div class=3D"gmail-gs" style=3D"margin:0px;min-width:0px;=
+padding:0px 0px 20px;width:auto;font-family:&quot;Google Sans&quot;,Roboto,=
+RobotoDraft,Helvetica,Arial,sans-serif;font-size:medium"><div class=3D"gmai=
+l-"><div id=3D"gmail-:3ja" class=3D"gmail-ii gmail-gt" style=3D"direction:l=
+tr;margin:8px 0px 0px;padding:0px;font-size:0.875rem;overflow-x:hidden"><di=
+v id=3D"gmail-:3bf" class=3D"gmail-a3s gmail-aiL" style=3D"direction:ltr;fo=
+nt-variant-numeric:normal;font-variant-east-asian:normal;font-variant-alter=
+nates:normal;font-size-adjust:none;font-kerning:auto;font-feature-settings:=
+normal;font-stretch:normal;font-size:small;line-height:1.5;font-family:Aria=
+l,Helvetica,sans-serif;overflow:auto hidden"><div id=3D"gmail-avWBGd-954"><=
+div dir=3D"ltr">ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy</div><=
+div class=3D"gmail-yj6qo"></div><div class=3D"gmail-adL"></div></div></div>=
+</div><div class=3D"gmail-WhmR8e" id=3D"gmail-avWBGd-955" style=3D"clear:bo=
+th"></div></div></div><br class=3D"gmail-Apple-interchange-newline"></div>
 
---0000000000001204420644b43c1a--
-
+--0000000000009b9da50644b4ac80--

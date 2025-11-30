@@ -54,8 +54,8 @@ pub fn request_email_verification(
     #[serde(crate = "near_sdk::serde")]
     pub struct VerificationResult {
         pub verified: bool,
-        pub account_id: Option<String>,
-        pub new_public_key: Option<String>,
+        pub account_id: String,
+        pub new_public_key: String,
         pub email_timestamp_ms: Option<u64>,
     }
 
@@ -70,11 +70,11 @@ pub fn request_email_verification(
   - `verified == true`: OutLayer succeeded, TXT records were fetched, and `verify_dkim(email_blob, &records)` passed.
   - `verified == false`: any failure (OutLayer error, no TXT records, DKIM mismatch, RSA verification failure, etc.).
   - `account_id` / `new_public_key`:
-    - When `verified == true` and the `Subject:` header matches the format  
-      `recover|user.testnet|ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx`, they are populated as:
-      - `account_id`: `Some("user.testnet".to_string())`
-      - `new_public_key`: `Some("ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx".to_string())`
-    - Otherwise they are `None`, and callers can treat the result as “DKIM verified, but no recover instruction embedded in Subject”.
+    - When `verified == true` and the email matches the recovery format  
+      `Subject: recover <account_id>` and body line `ed25519:<new_public_key>`, they are populated as:
+      - `account_id`: `"user.testnet".to_string()`
+      - `new_public_key`: `"ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx".to_string()`
+    - Otherwise they are empty strings, and callers can treat the result as “DKIM verified, but no usable recovery instruction embedded in the message”.
   - `email_timestamp_ms`:
     - Parsed from the `Date:` header using RFC 2822 parsing and converted to milliseconds since Unix epoch (UTC).
     - `None` if the `Date:` header is missing or can’t be parsed.
