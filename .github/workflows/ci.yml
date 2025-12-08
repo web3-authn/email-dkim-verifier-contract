@@ -17,10 +17,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run workspace tests
+        env:
+          RUST_TEST_THREADS: 1
         run: cargo test --all
 
       - name: Run contract tests
         run: |
           cd email-dkim-verifier-contract
           cargo test --features unit-testing
-
