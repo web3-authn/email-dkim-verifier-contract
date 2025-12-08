@@ -71,7 +71,7 @@ scripts/rotate_outlayer_keys.sh
 
 What it does:
 
-1. Runs the keygen binary to produce a new X25519 keypair and prints `SK_WORKER_B64` / `PK_WORKER_B64`.
+1. Runs the keygen binary to produce a new X25519 keypair and prints `OUTLAYER_WORKER_SK_B64` / `OUTLAYER_WORKER_PK_B64`.
 2. Prompts you to update the Outlayer worker secret `OUTLAYER_EMAIL_DKIM_SK` with `OUTLAYER_WORKER_SK_B64` and restart the worker (this step is still manual, because it depends on your Outlayer deployment).
 3. Calls `set_outlayer_encryption_public_key` on the deployed `EmailDkimVerifier` contract using `OUTLAYER_WORKER_PK_B64`, reading `CONTRACT_ID`, `NEAR_NETWORK_ID`, `DEPLOYER_PUBLIC_KEY`, and `DEPLOYER_PRIVATE_KEY` from `.env`.
 
