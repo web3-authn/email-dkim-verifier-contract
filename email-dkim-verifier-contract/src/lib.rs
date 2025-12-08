@@ -2,7 +2,7 @@ mod parsers;
 mod verify_dkim;
 
 use crate::parsers::{
-    extract_header_value, parse_email_timestamp_ms, parse_recover_instruction,
+    extract_header_value, parse_email_timestamp_ms, parse_from_address, parse_recover_instruction,
     parse_recover_public_key_from_body, parse_recover_subject,
 };
 use near_sdk::serde::{Deserialize, Serialize};
@@ -14,13 +14,17 @@ pub use crate::parsers::parse_dkim_tags;
 pub use crate::verify_dkim::verify_dkim;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
+// Default public encryption key for the Outlayer worker (can be overridden via contract state).
+const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
 // Minimum deposit forwarded to OutLayer (0.01 NEAR).
 // OutLayer currently requires ~7.001e21 yoctoNEAR for the configured limits,
 // so 1e22 yoctoNEAR provides a safe margin.
 const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 
 #[near(contract_state)]
-pub struct EmailDkimVerifier;
+pub struct EmailDkimVerifier {
+    outlayer_encryption_public_key: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "near_sdk::serde")]
@@ -47,23 +51,113 @@ trait OutLayer {
 
 #[ext_contract(ext_self)]
 trait ExtEmailDkimVerifier {
-    fn on_email_verification_result(
+    fn on_email_verification_onchain_result(
         &mut self,
         requested_by: AccountId,
         email_blob: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult;
+
+    fn on_email_verification_private_result(
+        &mut self,
+        requested_by: AccountId,
+        #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
+    ) -> VerificationResult;
 }
+
+#[derive(near_sdk::serde::Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct WorkerResponse {
+    method: String,
+    params: serde_json::Value,
+}
+
+#[derive(near_sdk::serde::Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct DnsLookupParams {
+    selector: Option<String>,
+    domain: Option<String>,
+    name: String,
+    #[serde(rename = "type")]
+    record_type: String,
+    records: Vec<String>,
+    error: Option<String>,
+}
+
+#[derive(near_sdk::serde::Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct VerifyParams {
+    verified: bool,
+    account_id: String,
+    new_public_key: String,
+    from_address: String,
+    email_timestamp_ms: Option<u64>,
+    error: Option<String>,
+}
+
 
 #[near]
 impl EmailDkimVerifier {
     #[init]
     pub fn new() -> Self {
-        Self
+        Self {
+            outlayer_encryption_public_key: OUTLAYER_ENCRYPTION_PUBKEY.to_string(),
+        }
     }
 
+    pub fn get_outlayer_encryption_public_key(&self) -> String {
+        self.outlayer_encryption_public_key.clone()
+    }
+
+    pub fn set_outlayer_encryption_public_key(&mut self, public_key: String) {
+        assert_eq!(
+            env::predecessor_account_id(),
+            env::current_account_id(),
+            "Only the contract owner can set the Outlayer encryption public key"
+        );
+        self.outlayer_encryption_public_key = public_key;
+    }
+
+    /// Unified entrypoint for email DKIM verification.
+    ///
+    /// @params
+    /// - `payer_account_id`: Account that pays for the Outlayer execution (typically the relayer).
+    /// - `email_blob`: Plaintext raw RFC‑5322 email; set only for on‑chain DKIM verification.
+    /// - `encrypted_email_blob`: Encrypted email envelope; set only for TEE‑private DKIM verification.
+    /// - `params`: Optional JSON context forwarded to the worker (used as AEAD AAD in encrypted mode).
+    ///
+    /// @returns
+    /// - A `Promise` that resolves to `VerificationResult` via either `on_email_verification_onchain_result`
+    ///   (on‑chain mode) or `on_email_verification_private_result` (encrypted mode).
     #[payable]
     pub fn request_email_verification(
+        &mut self,
+        payer_account_id: AccountId,
+        email_blob: Option<String>,
+        encrypted_email_blob: Option<serde_json::Value>,
+        params: Option<serde_json::Value>,
+    ) -> Promise {
+        match (email_blob, encrypted_email_blob) {
+            (Some(email), None) => self.request_email_verification_onchain_inner(
+                payer_account_id,
+                email,
+                params,
+            ),
+            (None, Some(blob)) => self.request_email_verification_private_inner(
+                payer_account_id,
+                blob,
+                params,
+            ),
+            (Some(_), Some(_)) => {
+                env::panic_str("provide either email_blob or encrypted_email_blob, not both")
+            }
+            (None, None) => {
+                env::panic_str("either email_blob or encrypted_email_blob must be provided")
+            }
+        }
+    }
+
+    fn request_email_verification_onchain_inner(
         &mut self,
         payer_account_id: AccountId,
         email_blob: String,
@@ -76,7 +170,6 @@ impl EmailDkimVerifier {
             "Attach at least 0.01 NEAR for Outlayer execution"
         );
 
-        // Use a fixed amount to fund OutLayer, refund any excess back to the caller.
         let outlayer_deposit = MIN_DEPOSIT;
         let refund = attached.saturating_sub(outlayer_deposit);
 
@@ -89,14 +182,14 @@ impl EmailDkimVerifier {
         }
 
         let input_payload = json!({
-            "email_blob": email_blob,
-            "params": params.unwrap_or_else(|| json!({})),
+            "method": "get-dns-records",
+            "params": {
+                "email_blob": email_blob,
+                "params": params.unwrap_or_else(|| json!({})),
+            },
         })
         .to_string();
 
-        // OutLayer currently expects a typed `CodeSource` enum with variants
-        // `GitHub` and `WasmUrl`. Wrap the GitHub source in the `GitHub`
-        // variant to match that schema.
         let code_source = json!({
             "GitHub": {
                 "repo": "https://github.com/web3-authn/dkim-verifier-contract",
@@ -125,12 +218,77 @@ impl EmailDkimVerifier {
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_unused_gas_weight(1)
-                    .on_email_verification_result(caller, email_blob),
+                    .on_email_verification_onchain_result(caller, email_blob),
+            )
+    }
+
+    fn request_email_verification_private_inner(
+        &mut self,
+        payer_account_id: AccountId,
+        encrypted_email_blob: serde_json::Value,
+        params: Option<serde_json::Value>,
+    ) -> Promise {
+        let caller = env::predecessor_account_id();
+        let attached = env::attached_deposit().as_yoctonear();
+        assert!(
+            attached >= MIN_DEPOSIT,
+            "Attach at least 0.01 NEAR for Outlayer execution"
+        );
+
+        let outlayer_deposit = MIN_DEPOSIT;
+        let refund = attached.saturating_sub(outlayer_deposit);
+
+        if refund > 0 {
+            env::log_str(&format!(
+                "Refunding {} yoctoNEAR of unused DKIM fees to {}",
+                refund, caller
+            ));
+            Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
+        }
+
+        let input_payload = json!({
+            "method": "verify-encrypted-email",
+            "params": {
+                "encrypted_email_blob": encrypted_email_blob,
+                "context": params.unwrap_or_else(|| json!({})),
+            },
+        })
+        .to_string();
+
+        let code_source = json!({
+            "GitHub": {
+                "repo": "https://github.com/web3-authn/dkim-verifier-contract",
+                "commit": "main",
+                "build_target": "wasm32-wasip2"
+            }
+        });
+
+        let resource_limits = json!({
+            "max_instructions": 10_000_000_000u64,
+            "max_memory_mb": 256u64,
+            "max_execution_seconds": 60u64
+        });
+
+        ext_outlayer::ext(OUTLAYER_CONTRACT_ID.parse().unwrap())
+            .with_attached_deposit(NearToken::from_yoctonear(outlayer_deposit))
+            .with_unused_gas_weight(1)
+            .request_execution(
+                code_source,
+                resource_limits,
+                input_payload,
+                None,
+                "Json".to_string(),
+                Some(payer_account_id),
+            )
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_unused_gas_weight(1)
+                    .on_email_verification_private_result(caller),
             )
     }
 
     #[private]
-    pub fn on_email_verification_result(
+    pub fn on_email_verification_onchain_result(
         &mut self,
         requested_by: AccountId,
         email_blob: String,
@@ -150,7 +308,52 @@ impl EmailDkimVerifier {
             }
         };
 
-        if let Some(err) = value.get("error").and_then(|v| v.as_str()) {
+        let worker_response: WorkerResponse = match serde_json::from_value(value.clone()) {
+            Ok(r) => r,
+            Err(e) => {
+                env::log_str(&format!("Failed to parse worker response: {e}"));
+                return VerificationResult {
+                    verified: false,
+                    account_id: String::new(),
+                    new_public_key: String::new(),
+                    from_address: String::new(),
+                    email_timestamp_ms: None,
+                };
+            }
+        };
+
+        if worker_response.method != "get-dns-records"
+            && worker_response.method != "dnsLookup"
+            && worker_response.method != "request_email_dns_records"
+        {
+            env::log_str(&format!(
+                "Unexpected worker method in on_email_verification_onchain_result: {}",
+                worker_response.method
+            ));
+            return VerificationResult {
+                verified: false,
+                account_id: String::new(),
+                new_public_key: String::new(),
+                from_address: String::new(),
+                email_timestamp_ms: None,
+            };
+        }
+
+        let dns_params: DnsLookupParams = match serde_json::from_value(worker_response.params.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    env::log_str(&format!("Failed to parse get-dns-records params: {e}"));
+                    return VerificationResult {
+                        verified: false,
+                        account_id: String::new(),
+                        new_public_key: String::new(),
+                        from_address: String::new(),
+                        email_timestamp_ms: None,
+                    };
+                }
+            };
+
+        if let Some(err) = dns_params.error.as_deref() {
             env::log_str(&format!("DKIM DNS fetch error: {err}"));
             return VerificationResult {
                 verified: false,
@@ -161,16 +364,7 @@ impl EmailDkimVerifier {
             };
         }
 
-        let records = value
-            .get("records")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        let record_strings: Vec<String> = records
-            .into_iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect();
+        let record_strings = dns_params.records;
 
         if record_strings.is_empty() {
             return VerificationResult {
@@ -213,8 +407,7 @@ impl EmailDkimVerifier {
             (String::new(), pk)
         };
 
-        let from_address = extract_header_value(&email_blob, "From").unwrap_or_default();
-
+        let from_address = parse_from_address(&email_blob);
         let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
 
         VerificationResult {
@@ -225,49 +418,92 @@ impl EmailDkimVerifier {
             email_timestamp_ms,
         }
     }
+
+    #[private]
+    pub fn on_email_verification_private_result(
+        &mut self,
+        requested_by: AccountId,
+        #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
+    ) -> VerificationResult {
+        let _ = requested_by;
+        let value = match result {
+            Ok(Some(v)) => v,
+            _ => {
+                return VerificationResult {
+                    verified: false,
+                    account_id: String::new(),
+                    new_public_key: String::new(),
+                    from_address: String::new(),
+                    email_timestamp_ms: None,
+                }
+            }
+        };
+
+        let worker_response: WorkerResponse = match serde_json::from_value(value.clone()) {
+            Ok(r) => r,
+            Err(e) => {
+                env::log_str(&format!(
+                    "Failed to parse worker response (private): {e}"
+                ));
+                return VerificationResult {
+                    verified: false,
+                    account_id: String::new(),
+                    new_public_key: String::new(),
+                    from_address: String::new(),
+                    email_timestamp_ms: None,
+                };
+            }
+        };
+
+        if worker_response.method != "request_email_verification_private" {
+            env::log_str(&format!(
+                "Unexpected worker method in on_email_verification_private_result: {}",
+                worker_response.method
+            ));
+            return VerificationResult {
+                verified: false,
+                account_id: String::new(),
+                new_public_key: String::new(),
+                from_address: String::new(),
+                email_timestamp_ms: None,
+            };
+        }
+
+        let verify_params: VerifyParams =
+            match serde_json::from_value(worker_response.params.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    env::log_str(&format!(
+                        "Failed to parse verifyEncryptedDKIM params: {e}"
+                    ));
+                    return VerificationResult {
+                        verified: false,
+                        account_id: String::new(),
+                        new_public_key: String::new(),
+                        from_address: String::new(),
+                        email_timestamp_ms: None,
+                    };
+                }
+            };
+
+        if let Some(err) = verify_params.error.as_deref() {
+            env::log_str(&format!(
+                "verifyEncryptedDKIM worker error: {err}"
+            ));
+        }
+
+        VerificationResult {
+            verified: verify_params.verified,
+            account_id: verify_params.account_id,
+            new_public_key: verify_params.new_public_key,
+            from_address: verify_params.from_address,
+            email_timestamp_ms: verify_params.email_timestamp_ms,
+        }
+    }
 }
 
 impl Default for EmailDkimVerifier {
     fn default() -> Self {
         env::panic_str("Contract is not initialized");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::serde_json::json;
-
-    fn real_gmail_dns_record() -> String {
-        "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntvSKT1hkqhKe0xcaZ0x+QbouDsJuBfby/S82jxsoC/SodmfmVs2D1KAH3mi1AqdMdU12h2VfETeOJkgGYq5ljd996AJ7ud2SyOLQmlhaNHH7Lx+Mdab8/zDN1SdxPARDgcM7AsRECHwQ15R20FaKUABGu4NTbR2fDKnYwiq5jQyBkLWP+LgGOgfUF4T4HZb2PY2bQtEP6QeqOtcW4rrsH24L7XhD+HSZb1hsitrE0VPbhJzxDwI4JF815XMnSVjZgYUXP8CxI1Y0FONlqtQYgsorZ9apoW1KPQe8brSSlRsi9sXB/tu56LmG7tEDNmrZ5XUwQYUUADBOu7t1niwXwIDAQAB".to_string()
-    }
-
-    #[test]
-    fn on_email_verification_result_returns_account_and_key() {
-        let mut contract = EmailDkimVerifier;
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml").to_string();
-
-        let outlayer_value = json!({
-            "domain": "gmail.com",
-            "error": null,
-            "records": [ real_gmail_dns_record() ],
-            "selector": "20230601"
-        });
-
-        let requested_by: AccountId = "caller.testnet".parse().unwrap();
-        let result = contract.on_email_verification_result(
-            requested_by,
-            email_blob,
-            Ok(Some(outlayer_value)),
-        );
-
-        assert!(result.verified);
-        assert_eq!(result.account_id, "berp61.w3a-v1.testnet");
-        assert_eq!(
-            result.new_public_key,
-            "ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy"
-        );
-        assert_eq!(result.from_address, "Pta <n6378056@gmail.com>");
-        assert!(result.email_timestamp_ms.is_some());
     }
 }

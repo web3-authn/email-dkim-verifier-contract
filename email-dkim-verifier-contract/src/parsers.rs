@@ -354,6 +354,34 @@ pub fn parse_recover_public_key_from_body(email: &str) -> Option<String> {
     None
 }
 
+pub fn parse_from_address(email: &str) -> String {
+    let value = match extract_header_value(email, "From") {
+        Some(v) => v.trim().to_string(),
+        None => return String::new(),
+    };
+
+    if let Some(start) = value.find('<') {
+        if let Some(end_rel) = value[start + 1..].find('>') {
+            let end = start + 1 + end_rel;
+            let inner = &value[start + 1..end];
+            return inner.trim().to_string();
+        }
+    }
+
+    for token in value.split_whitespace().rev() {
+        if token.contains('@') {
+            let cleaned = token
+                .trim_matches(|c| c == '<' || c == '>' || c == '"' || c == '\'')
+                .to_string();
+            if !cleaned.is_empty() {
+                return cleaned;
+            }
+        }
+    }
+
+    value
+}
+
 fn is_leap_year(year: i32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
@@ -545,5 +573,16 @@ Subject: recover alice.testnet ed25519:NEW_PUBLIC_KEY\n\
 ed25519:NEW_PUBLIC_KEY\n";
         let key_from_body = parse_recover_public_key_from_body(email).expect("key");
         assert_eq!(key_from_body, "ed25519:NEW_PUBLIC_KEY");
+    }
+
+    #[test]
+    fn parse_from_address_extracts_email_only() {
+        let email = "From: Pta <n6378056@gmail.com>\r\n\r\nBody";
+        let addr = parse_from_address(email);
+        assert_eq!(addr, "n6378056@gmail.com");
+
+        let email2 = "From: alice@example.com\r\n\r\nBody";
+        let addr2 = parse_from_address(email2);
+        assert_eq!(addr2, "alice@example.com");
     }
 }
