@@ -5,6 +5,8 @@ default:
     @echo "  just upgrade     - Upgrade contract in production"
     @echo "  just upgrade-dev - Upgrade contract in development"
     @echo "  just request     - Call request_email_verification with sample DKIM email"
+    @echo "  just gen-keypair - Generate X25519 worker keypair"
+    @echo "  just rotate-keys - Rotate Outlayer worker + contract keys"
     @echo ""
     @echo "Make sure to set up your .env file before running any commands."
 
@@ -33,6 +35,16 @@ request:
     @echo "Calling request_email_verification on contract..."
     sh ./scripts/request_email_verification.sh
 
+gen-keypair:
+    @echo "Generating X25519 (sk_worker, pk_worker) keypair..."
+    cargo run --quiet --bin generate_x25519_keypair
+
+rotate-keys:
+    @echo "Rotating Outlayer worker + contract keys..."
+    sh ./scripts/rotate_outlayer_keys.sh
+
 test:
     @echo "cd email-dkim-verifier-contract && cargo test --features unit-testing"
     sh ./scripts/tests.sh
+    @echo "cargo test"
+    cargo test
