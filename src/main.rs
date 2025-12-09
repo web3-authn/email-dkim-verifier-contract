@@ -7,7 +7,7 @@ mod parsers;
 mod verify_dkim;
 
 use crate::api::{handle_request, RequestType};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -19,5 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let response = handle_request(request);
 
     print!("{}", serde_json::to_string(&response)?);
+    io::stdout().flush()?;
+
     Ok(())
 }

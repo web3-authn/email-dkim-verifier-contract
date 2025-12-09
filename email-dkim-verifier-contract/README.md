@@ -100,13 +100,31 @@ pub fn request_email_verification(
     - `verified == false` covers any failure (OutLayer error, DNS error, DKIM mismatch, RSA failure, malformed recovery instruction, etc.).
     - `account_id` / `new_public_key`:
       - When `verified == true` and the email matches the recovery format
-        `Subject: recover <account_id>` and body line `ed25519:<new_public_key>`, they are populated as:
+        `Subject: recover-<REQUEST_ID> <account_id>` and body line `ed25519:<new_public_key>`, they are populated as:
         - `account_id`: `"user.testnet".to_string()`
         - `new_public_key`: `"ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx".to_string()`
       - When the format does not match, `account_id` / `new_public_key` are empty strings, and callers can treat the result as “DKIM verified, but no usable recovery instruction embedded in the message”.
     - `email_timestamp_ms`:
       - Parsed from the `Date:` header using RFC 2822 parsing and converted to milliseconds since Unix epoch (UTC).
       - `None` if the `Date:` header is missing or can’t be parsed.
+
+### Request IDs and frontend polling
+
+For email‑recovery flows, the contract supports a short‑lived `request_id` embedded in the Subject so the frontend can poll the result without talking to the relayer:
+
+- Subject format with `request_id`:
+  - `Subject: recover-<REQUEST_ID> <account_id> ed25519:<public_key>`
+  - Example: `recover-123ABC alice.testnet ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy`
+- When OutLayer finishes (on‑chain or TEE mode), the contract:
+  - Parses `REQUEST_ID` from the Subject if present.
+  - Stores the `VerificationResult` in an internal map keyed by `request_id`.
+  - Schedules a `clear_verification_result(request_id)` call via yield‑resume so the entry is automatically deleted after ~200 blocks.
+- Frontend API:
+  - Call `get_verification_result(request_id: String) -> Option<VerificationResult>`.
+  - Interpret the response as:
+    - `None` → pending, expired, or already cleared.
+    - `Some(VerificationResult { verified: true, .. })` → DKIM passed and recovery instruction parsed.
+    - `Some(VerificationResult { verified: false, .. })` → DKIM or recovery parsing failed.
 
 Typical usage from another contract:
 

@@ -431,11 +431,18 @@ pub fn parse_recover_subject(subject: &str) -> Option<String> {
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    if kind != "recover" {
+    let account_id_str = if kind == "recover" {
+        // Legacy format: "recover <account_id> ..."
+        parts.next()?
+    } else if let Some(rest) = kind.strip_prefix("recover-") {
+        // New format: "recover-<REQUEST_ID> <account_id> ..."
+        let _request_id = rest;
+        parts.next()?
+    } else {
         return None;
-    }
+    };
 
-    let account_id_str = parts.next()?.trim();
+    let account_id_str = account_id_str.trim();
     if account_id_str.is_empty() {
         return None;
     }
@@ -448,11 +455,18 @@ pub fn parse_recover_instruction(subject: &str) -> Option<(String, String)> {
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    if kind != "recover" {
+    let account_id_str = if kind == "recover" {
+        // Legacy format.
+        parts.next()?
+    } else if let Some(rest) = kind.strip_prefix("recover-") {
+        // New format with request_id in the first token.
+        let _request_id = rest;
+        parts.next()?
+    } else {
         return None;
-    }
+    };
 
-    let account_id_str = parts.next()?.trim();
+    let account_id_str = account_id_str.trim();
     if account_id_str.is_empty() {
         return None;
     }
@@ -467,6 +481,25 @@ pub fn parse_recover_instruction(subject: &str) -> Option<(String, String)> {
 
     let new_public_key = new_public_key?;
     Some((account_id_str.to_string(), new_public_key))
+}
+
+/// Parse the short request_id from a recovery Subject header (worker side).
+///
+/// Expected format:
+///   "recover-<REQUEST_ID> <account_id> ed25519:<public_key>"
+/// Returns Some("<REQUEST_ID>") when the prefix is present; otherwise None.
+pub fn parse_recover_request_id(subject: &str) -> Option<String> {
+    let subject = subject.trim();
+    let mut parts = subject.split_whitespace();
+    let first = parts.next()?;
+
+    if let Some(rest) = first.strip_prefix("recover-") {
+        if !rest.is_empty() {
+            return Some(rest.to_string());
+        }
+    }
+
+    None
 }
 
 pub fn parse_recover_public_key_from_body(email: &str) -> Option<String> {

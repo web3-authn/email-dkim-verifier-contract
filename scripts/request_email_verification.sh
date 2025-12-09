@@ -33,7 +33,7 @@ JSON_ARGS=$(jq -n \
 near contract call-function as-transaction "$CONTRACT_ID" request_email_verification \
   json-args "$JSON_ARGS" \
   prepaid-gas '300.0 Tgas' \
-  attached-deposit '0.01 NEAR' \
+  attached-deposit '0.1 NEAR' \
   sign-as "$SIGNER_ID" \
   network-config "$NEAR_NETWORK_ID" \
   sign-with-keychain send

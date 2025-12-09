@@ -38,12 +38,16 @@ pub fn parse_recover_subject(subject: &str) -> Option<AccountId> {
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    if kind != "recover" {
+    let account_id_str = if let Some(rest) = kind.strip_prefix("recover-") {
+        // New format: "recover-<request_id> <account_id> ..."
+        // Skip the request_id token; next token must be account_id.
+        let _request_id = rest;
+        parts.next()?
+    } else {
         return None;
-    }
+    };
 
-    let account_id_str = parts.next()?.trim();
-    let account_id: AccountId = match account_id_str.parse() {
+    let account_id: AccountId = match account_id_str.trim().parse() {
         Ok(a) => a,
         Err(_) => return None,
     };
@@ -54,18 +58,21 @@ pub fn parse_recover_subject(subject: &str) -> Option<AccountId> {
 /// Parse both account_id and public key from a recovery Subject header.
 ///
 /// Expected primary format:
-///   "recover <account_id> ed25519:<public_key>"
+///   "recover-<request_id> <account_id> ed25519:<public_key>"
 pub fn parse_recover_instruction(subject: &str) -> Option<(AccountId, String)> {
     let subject = subject.trim();
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    if kind != "recover" {
+    let account_id_str = if let Some(rest) = kind.strip_prefix("recover-") {
+        // New format with request_id in the first token.
+        let _request_id = rest;
+        parts.next()?
+    } else {
         return None;
-    }
+    };
 
-    let account_id_str = parts.next()?.trim();
-    let account_id: AccountId = match account_id_str.parse() {
+    let account_id: AccountId = match account_id_str.trim().parse() {
         Ok(a) => a,
         Err(_) => return None,
     };
@@ -81,6 +88,25 @@ pub fn parse_recover_instruction(subject: &str) -> Option<(AccountId, String)> {
 
     let new_public_key = new_public_key?;
     Some((account_id, new_public_key))
+}
+
+/// Parse the short request_id from a recovery Subject header.
+///
+/// Expected format:
+///   "recover-<request_id> <account_id> ed25519:<public_key>"
+/// Returns Some("<request_id>") when the prefix is present; otherwise None.
+pub fn parse_recover_request_id(subject: &str) -> Option<String> {
+    let subject = subject.trim();
+    let mut parts = subject.split_whitespace();
+    let first = parts.next()?;
+
+    if let Some(rest) = first.strip_prefix("recover-") {
+        if !rest.is_empty() {
+            return Some(rest.to_string());
+        }
+    }
+
+    None
 }
 
 pub fn parse_dkim_tags(value: &str) -> std::collections::HashMap<String, String> {
@@ -262,13 +288,6 @@ pub fn canonicalize_body_relaxed(body: &str) -> String {
     result
 }
 
-pub fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
-    headers
-        .iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case("DKIM-Signature"))
-        .map(|(_, v)| v.clone())
-}
-
 pub fn parse_email_timestamp_ms(email: &str) -> Option<u64> {
     let date_value = extract_header_value(email, "Date")?;
     let date_str = date_value.trim();
@@ -390,7 +409,7 @@ fn days_in_month(year: i32, month: u32) -> Option<u32> {
     if month < 1 || month > 12 {
         return None;
     }
-    let mut days = match month {
+    let days = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
         2 => {
@@ -521,6 +540,13 @@ mod tests {
     use rsa::sha2::{Digest, Sha256};
     use rsa::RsaPublicKey;
 
+    pub fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
+        headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("DKIM-Signature"))
+            .map(|(_, v)| v.clone())
+    }
+
     #[test]
     fn real_gmail_full_message_body_hash_matches_bh() {
         let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
@@ -560,7 +586,7 @@ mod tests {
 
     #[test]
     fn parse_recover_subject_and_body_key() {
-        let subject = "recover alice.testnet ed25519:NEW_PUBLIC_KEY";
+        let subject = "recover-REQ123 alice.testnet ed25519:NEW_PUBLIC_KEY";
 
         let (account_id, key_from_subject) =
             parse_recover_instruction(subject).expect("instruction");
@@ -568,11 +594,24 @@ mod tests {
         assert_eq!(key_from_subject, "ed25519:NEW_PUBLIC_KEY");
 
         let email = "From: alice@example.com\n\
-Subject: recover alice.testnet ed25519:NEW_PUBLIC_KEY\n\
+Subject: recover-REQ123 alice.testnet ed25519:NEW_PUBLIC_KEY\n\
 \n\
 ed25519:NEW_PUBLIC_KEY\n";
         let key_from_body = parse_recover_public_key_from_body(email).expect("key");
         assert_eq!(key_from_body, "ed25519:NEW_PUBLIC_KEY");
+    }
+
+    #[test]
+    fn parse_recover_subject_with_request_id() {
+        let subject = "recover-123ABC alice.testnet ed25519:NEW_PUBLIC_KEY";
+
+        let (account_id, key_from_subject) =
+            parse_recover_instruction(subject).expect("instruction");
+        assert_eq!(account_id.as_str(), "alice.testnet");
+        assert_eq!(key_from_subject, "ed25519:NEW_PUBLIC_KEY");
+
+        let req_id = parse_recover_request_id(subject).expect("request id");
+        assert_eq!(req_id, "123ABC");
     }
 
     #[test]

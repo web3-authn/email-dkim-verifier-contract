@@ -39,9 +39,9 @@ gen-keypair:
     @echo "Generating X25519 (sk_worker, pk_worker) keypair..."
     cargo run --quiet --bin generate_x25519_keypair
 
-rotate-keys:
-    @echo "Rotating Outlayer worker + contract keys..."
-    sh ./scripts/rotate_outlayer_keys.sh
+set-outlayer-keys:
+    @echo "Setting Outlayer worker + contract keys..."
+    sh ./scripts/set_outlayer_keys.sh
 
 test:
     @echo "cd email-dkim-verifier-contract && cargo test --features unit-testing"
