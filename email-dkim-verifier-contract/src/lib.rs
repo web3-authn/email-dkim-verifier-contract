@@ -18,7 +18,7 @@ pub use crate::verify_dkim::verify_dkim;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 // Git commit hash of the Outlayer WASI worker to execute.
-const OUTLAYER_WORKER_COMMIT: &str = "ebb25eb0577fa8d361ddda40f91194e68d3aba73";
+const OUTLAYER_WORKER_COMMIT: &str = "3b46cfb98ed1b285cec00d38423541a73163238e";
 // Default public encryption key for the Outlayer worker (can be overridden via contract state).
 const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
 // Method name returned by the Outlayer worker for encrypted DKIM verification.
