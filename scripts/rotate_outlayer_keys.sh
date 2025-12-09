@@ -49,7 +49,7 @@ echo "in the Outlayer secrets page:"
 echo "  https://outlayer.fastnear.com/secrets"
 echo
 echo "Repository (for reference):"
-echo "  https://github.com/web3-authn/dkim-verifier-contract"
+echo "  https://github.com/web3-authn/email-dkim-verifier-contract"
 echo
 echo
 

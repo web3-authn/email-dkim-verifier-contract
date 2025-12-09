@@ -230,7 +230,7 @@ impl EmailDkimVerifier {
 
         let code_source = json!({
             "GitHub": {
-                "repo": "https://github.com/web3-authn/dkim-verifier-contract",
+                "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
                 "commit": "main",
                 "build_target": "wasm32-wasip2"
             }
@@ -295,7 +295,7 @@ impl EmailDkimVerifier {
 
         let code_source = json!({
             "GitHub": {
-                "repo": "https://github.com/web3-authn/dkim-verifier-contract",
+                "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
                 "commit": "main",
                 "build_target": "wasm32-wasip2"
             }
