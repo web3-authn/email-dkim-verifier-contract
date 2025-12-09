@@ -18,6 +18,8 @@ pub use crate::verify_dkim::verify_dkim;
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 // Default public encryption key for the Outlayer worker (can be overridden via contract state).
 const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
+// Method name returned by the Outlayer worker for encrypted DKIM verification.
+const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
 // Minimum deposit forwarded to OutLayer (0.01 NEAR).
 // OutLayer currently requires ~7.001e21 yoctoNEAR for the configured limits,
 // so 1e22 yoctoNEAR provides a safe margin.
@@ -283,7 +285,7 @@ impl EmailDkimVerifier {
         }
 
         let input_payload = json!({
-            "method": "verify-encrypted-email",
+            "method": VERIFY_ENCRYPTED_EMAIL_METHOD,
             "params": {
                 "encrypted_email_blob": encrypted_email_blob,
                 "context": params.unwrap_or_else(|| json!({})),
@@ -513,7 +515,7 @@ impl EmailDkimVerifier {
             }
         };
 
-        if worker_response.method != "verify-encrypted-email" {
+        if worker_response.method != VERIFY_ENCRYPTED_EMAIL_METHOD {
             env::log_str(&format!(
                 "Unexpected worker method in on_email_verification_private_result: {}",
                 worker_response.method
