@@ -12,10 +12,14 @@ use near_sdk::{env, AccountId, NearToken, Promise, PromiseError};
 #[derive(near_sdk::serde::Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 struct DnsLookupParams {
+    #[allow(dead_code)]
     selector: Option<String>,
+    #[allow(dead_code)]
     domain: Option<String>,
+    #[allow(dead_code)]
     name: String,
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     record_type: String,
     records: Vec<String>,
     error: Option<String>,
