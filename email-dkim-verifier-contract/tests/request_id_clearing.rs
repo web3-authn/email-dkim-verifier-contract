@@ -6,7 +6,20 @@ use std::error::Error;
 
 #[tokio::test]
 async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
-    let wasm = near_workspaces::compile_project("./").await?;
+    // Load the pre-built WASM artifact (built in CI or locally via cargo build).
+    // This avoids needing `cargo-near` inside the test runner and improves performance.
+    let wasm_path = "target/wasm32-unknown-unknown/release/email_dkim_verifier_contract.wasm";
+
+    // Fallback logic purely for local convenience if running from different dirs,
+    // but in CI `cd email-dkim-verifier-contract` is done before test.
+    let wasm = if std::path::Path::new(wasm_path).exists() {
+        std::fs::read(wasm_path)?
+    } else {
+        // As a fallback for local runs where artifacts might be in the root target or otherwise named
+        // we try to use compile_project, but note this requires cargo-near.
+        // For CI specifically, we expect the file to exist.
+        near_workspaces::compile_project("./").await?
+    };
 
     let sandbox = near_workspaces::sandbox().await?;
     let contract = sandbox.dev_deploy(&wasm).await?;
