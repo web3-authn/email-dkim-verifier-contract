@@ -1,6 +1,6 @@
 [package]
 name = "email-dkim-verifier-contract"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "email DKIM verifier contract"
 repository = "https://github.com/web3-authn/email-dkim-verifier-contract"
