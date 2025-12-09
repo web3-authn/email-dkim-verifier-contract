@@ -27,7 +27,7 @@ jobs:
       - name: Build Contract (WASM)
         run: |
           cd email-dkim-verifier-contract
-          cargo near build --no-docker
+          cargo near build
 
       - name: Run workspace tests
         env:
