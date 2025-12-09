@@ -1,4 +1,4 @@
-use crate::crypto::{decrypt_encrypted_email, EncryptedEmailEnvelope};
+use crate::crypto::{decrypt_encrypted_email, EncryptedEmailEnvelope, load_worker_static_secret};
 use crate::parsers::{extract_header_value, parse_email_timestamp_ms, parse_from_address};
 use base64;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
@@ -8,11 +8,13 @@ use sha2::Sha256;
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
 pub(crate) fn setup_worker_static_secret() -> StaticSecret {
-    let sk_bytes = [7u8; 32];
-    let static_secret = StaticSecret::from(sk_bytes);
-    let sk_b64 = base64::encode(sk_bytes);
-    std::env::set_var("OUTLAYER_EMAIL_DKIM_SK", sk_b64);
-    static_secret
+    // Use a fixed seed so tests are deterministic.
+    let seed_bytes = [7u8; 32];
+    let seed_b64 = base64::encode(seed_bytes);
+    std::env::set_var("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64", seed_b64);
+
+    // Derive the same StaticSecret as the worker would.
+    load_worker_static_secret().expect("worker static secret to load from seed")
 }
 
 pub(crate) fn encrypt_email(email_blob: &str, context: &serde_json::Value) -> EncryptedEmailEnvelope {

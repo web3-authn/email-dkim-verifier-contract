@@ -23,17 +23,25 @@ pub struct EncryptedEmailEnvelope {
     pub ciphertext: String,
 }
 
-fn load_worker_static_secret() -> Result<StaticSecret, String> {
-    let sk_b64 = std::env::var("OUTLAYER_EMAIL_DKIM_SK")
-        .map_err(|_| "missing OUTLAYER_EMAIL_DKIM_SK env var".to_string())?;
-    let sk_bytes = base64::decode(sk_b64.trim())
-        .map_err(|_| "OUTLAYER_EMAIL_DKIM_SK must be base64-encoded".to_string())?;
-    if sk_bytes.len() != 32 {
-        return Err("OUTLAYER_EMAIL_DKIM_SK must be 32 bytes".to_string());
-    }
-    let mut sk_array = [0u8; 32];
-    sk_array.copy_from_slice(&sk_bytes);
-    Ok(StaticSecret::from(sk_array))
+pub fn get_worker_public_key() -> Result<String, String> {
+    let sk = load_worker_static_secret()?;
+    let pk = X25519PublicKey::from(&sk);
+    Ok(base64::encode(pk.as_bytes()))
+}
+
+pub(crate) fn load_worker_static_secret() -> Result<StaticSecret, String> {
+    let seed_b64 = std::env::var("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64")
+        .map_err(|_| "missing PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 env var".to_string())?;
+
+    let seed_bytes = base64::decode(seed_b64.trim())
+         .map_err(|_| "PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 must be base64-encoded".to_string())?;
+
+    let hk = Hkdf::<Sha256>::new(None, &seed_bytes);
+    let mut okm = [0u8; 32];
+    hk.expand(b"outlayer-email-dkim-x25519", &mut okm)
+        .map_err(|_| "HKDF expansion failed".to_string())?;
+
+    Ok(StaticSecret::from(okm))
 }
 
 pub fn decrypt_encrypted_email(
@@ -42,8 +50,9 @@ pub fn decrypt_encrypted_email(
 ) -> Result<String, String> {
     let static_secret = load_worker_static_secret()?;
 
-    let eph_bytes =
-        base64::decode(envelope.ephemeral_pub.trim()).map_err(|_| "invalid ephemeral_pub".to_string())?;
+    let eph_bytes = base64::decode(envelope.ephemeral_pub.trim())
+        .map_err(|_| "invalid ephemeral_pub".to_string())?;
+
     if eph_bytes.len() != 32 {
         return Err("ephemeral_pub must be 32 bytes".to_string());
     }
@@ -86,4 +95,3 @@ pub fn decrypt_encrypted_email(
 
     String::from_utf8(plaintext).map_err(|_| "decrypted email is not valid UTF-8".to_string())
 }
-

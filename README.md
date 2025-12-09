@@ -40,7 +40,7 @@ Used for email-based account recovery for tatchi.xyz accounts; other contracts c
 
 The encrypted DKIM flow uses a KEM + AEAD scheme (X25519 + HKDF‑SHA256 + ChaCha20‑Poly1305). Each deployment needs a worker keypair `(sk_worker, pk_worker)`:
 
-- `sk_worker` (private): stored as `OUTLAYER_EMAIL_DKIM_SK` in the Outlayer worker secrets/env.
+- `sk_worker` (private): derived inside the worker from the protected seed `PROTECTED_OUTLAYER_WORKER_SK_SEED_B64` stored in the Outlayer secrets/env.
 - `pk_worker` (public): stored in contract state and exposed via `get_outlayer_encryption_public_key`.
 
 ### Generate a keypair
@@ -58,7 +58,7 @@ OUTLAYER_WORKER_SK_B64=...
 OUTLAYER_WORKER_PK_B64=...
 ```
 
-- Set `OUTLAYER_WORKER_SK_B64` as the worker secret `OUTLAYER_EMAIL_DKIM_SK` (Outlayer dashboard/infra).
+- Set `OUTLAYER_WORKER_SK_B64` as the worker secret `PROTECTED_OUTLAYER_WORKER_SK_SEED_B64` (Outlayer dashboard/infra).
 - Use `OUTLAYER_WORKER_PK_B64` when initializing or rotating the contract’s public key.
 
 ### Rotate keys
@@ -72,7 +72,7 @@ scripts/rotate_outlayer_keys.sh
 What it does:
 
 1. Runs the keygen binary to produce a new X25519 keypair and prints `OUTLAYER_WORKER_SK_B64` / `OUTLAYER_WORKER_PK_B64`.
-2. Prompts you to update the Outlayer worker secret `OUTLAYER_EMAIL_DKIM_SK` with `OUTLAYER_WORKER_SK_B64` and restart the worker (this step is still manual, because it depends on your Outlayer deployment).
+2. Prompts you to update the Outlayer worker secret `PROTECTED_OUTLAYER_WORKER_SK_SEED_B64` with `OUTLAYER_WORKER_SK_B64` and restart the worker (this step is still manual, because it depends on your Outlayer deployment).
 3. Calls `set_outlayer_encryption_public_key` on the deployed `EmailDkimVerifier` contract using `OUTLAYER_WORKER_PK_B64`, reading `CONTRACT_ID`, `NEAR_NETWORK_ID`, `DEPLOYER_PUBLIC_KEY`, and `DEPLOYER_PRIVATE_KEY` from `.env`.
 
 After rotation:

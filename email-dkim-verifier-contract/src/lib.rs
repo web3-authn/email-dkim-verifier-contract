@@ -18,7 +18,7 @@ pub use crate::verify_dkim::verify_dkim;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 // Git commit hash of the Outlayer WASI worker to execute.
-const OUTLAYER_WORKER_COMMIT: &str = "157c94613dedebf1d8a62c8aaee61c42f45b7216";
+const OUTLAYER_WORKER_COMMIT: &str = "a7d97fdf708451f6303a7efb8a2bec07ef677165";
 // Default public encryption key for the Outlayer worker (can be overridden via contract state).
 const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
 // Method name returned by the Outlayer worker for encrypted DKIM verification.
@@ -84,6 +84,11 @@ trait ExtEmailDkimVerifier {
         requested_by: AccountId,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult;
+
+    fn on_worker_public_key_result(
+        &mut self,
+        #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
+    );
 }
 
 #[derive(near_sdk::serde::Deserialize)]
@@ -128,13 +133,83 @@ impl EmailDkimVerifier {
         self.outlayer_encryption_public_key.clone()
     }
 
-    pub fn set_outlayer_encryption_public_key(&mut self, public_key: String) {
+    #[payable]
+    pub fn set_outlayer_encryption_public_key(&mut self) -> Promise {
         assert_eq!(
             env::predecessor_account_id(),
             env::current_account_id(),
             "Only the contract owner can set the Outlayer encryption public key"
         );
-        self.outlayer_encryption_public_key = public_key;
+
+        let attached = env::attached_deposit().as_yoctonear();
+        assert!(
+            attached >= MIN_DEPOSIT,
+            "Attach at least 0.01 NEAR for Outlayer execution"
+        );
+
+        let input_payload = serde_json::json!({
+            "method": "get-public-key",
+            "params": {}
+        })
+        .to_string();
+
+        let code_source = serde_json::json!({
+            "GitHub": {
+                "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
+                "commit": OUTLAYER_WORKER_COMMIT,
+                "build_target": "wasm32-wasip2"
+            }
+        });
+
+        let resource_limits = serde_json::json!({
+            "max_instructions": 10_000_000_000u64,
+            "max_memory_mb": 256u64,
+            "max_execution_seconds": 60u64
+        });
+
+        ext_outlayer::ext(OUTLAYER_CONTRACT_ID.parse().unwrap())
+            .with_attached_deposit(near_sdk::NearToken::from_yoctonear(MIN_DEPOSIT))
+            .with_unused_gas_weight(1)
+            .request_execution(
+                code_source,
+                resource_limits,
+                input_payload,
+                None, // secrets
+                "Json".to_string(),
+                None, // payer
+            )
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_unused_gas_weight(1)
+                    .on_worker_public_key_result(),
+            )
+    }
+
+    #[private]
+    pub fn on_worker_public_key_result(
+        &mut self,
+        #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
+    ) {
+        match result {
+            Ok(Some(val)) => {
+                let response: WorkerResponse = serde_json::from_value(val)
+                    .expect("Failed to parse worker response");
+
+                if response.method != "get-public-key" {
+                     env::panic_str(&format!("Unexpected method: {}", response.method));
+                }
+
+                let pubkey_str = response.params
+                    .get("public_key")
+                    .and_then(|v| v.as_str())
+                    .expect("Response missing public_key")
+                    .to_string();
+
+                self.outlayer_encryption_public_key = pubkey_str;
+            }
+            Ok(None) => env::panic_str("Worker returned empty result"),
+            Err(_) => env::panic_str("Worker execution failed"),
+        }
     }
 
     pub fn get_verification_result(&self, request_id: String) -> Option<VerificationResult> {

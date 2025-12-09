@@ -1,11 +1,10 @@
-use crate::api::handle_request;
-use crate::api::RequestType;
+use crate::api::{handle_request, RequestType};
 use super::crypto::encrypt_email;
 use base64;
 
 #[test]
 fn verify_encrypted_dkim_flow_fails_without_secret() {
-    std::env::remove_var("OUTLAYER_EMAIL_DKIM_SK");
+    std::env::remove_var("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64");
     let params = serde_json::json!({
         "encrypted_email_blob": {
             "version": 1,

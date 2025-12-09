@@ -43,7 +43,7 @@ echo "======================================================"
 echo
 echo "1) Set the Outlayer worker secret/env variable:"
 echo
-printf '"OUTLAYER_EMAIL_DKIM_SK": "%s"\n' "${OUTLAYER_WORKER_SK_B64}"
+printf '"PROTECTED_OUTLAYER_WORKER_SK_SEED_B64": "%s"\n' "${OUTLAYER_WORKER_SK_B64}"
 echo
 echo "in the Outlayer secrets page:"
 echo "  https://outlayer.fastnear.com/secrets"

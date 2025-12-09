@@ -1,4 +1,4 @@
-use crate::crypto::{decrypt_encrypted_email, EncryptedEmailEnvelope};
+use crate::crypto::{decrypt_encrypted_email, get_worker_public_key, EncryptedEmailEnvelope};
 use crate::dns::fetch_txt_records;
 use crate::parsers::{
     extract_dkim_selector_and_domain, extract_header_value, parse_email_timestamp_ms,
@@ -13,6 +13,7 @@ use serde_json::Value;
 const GET_DNS_RECORDS_METHOD: &str = "get-dns-records";
 // Method name for encrypted DKIM verification; must match the contract.
 const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
+const GET_PUBLIC_KEY_METHOD: &str = "get-public-key";
 
 #[derive(Deserialize)]
 pub struct RequestType {
@@ -53,6 +54,7 @@ pub fn handle_request(request: RequestType) -> ResponseType {
     match request.method.as_str() {
         GET_DNS_RECORDS_METHOD => handle_dns_lookup(request.params),
         VERIFY_ENCRYPTED_EMAIL_METHOD => handle_verify_encrypted_dkim(request.params),
+        GET_PUBLIC_KEY_METHOD => handle_get_public_key(),
         other => ResponseType {
             method: other.to_string(),
             params: serde_json::json!({
@@ -290,6 +292,19 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
             "request_id": request_id,
             "error": serde_json::Value::Null,
         }),
+    }
+}
+
+fn handle_get_public_key() -> ResponseType {
+    match get_worker_public_key() {
+        Ok(pk) => ResponseType {
+            method: GET_PUBLIC_KEY_METHOD.to_string(),
+            params: serde_json::json!({ "public_key": pk }),
+        },
+        Err(e) => ResponseType {
+            method: GET_PUBLIC_KEY_METHOD.to_string(),
+            params: serde_json::json!({ "error": e }),
+        },
     }
 }
 
