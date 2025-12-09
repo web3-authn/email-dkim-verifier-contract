@@ -22,7 +22,8 @@ source .env
 : "${DEPLOYER_PRIVATE_KEY:?Set DEPLOYER_PRIVATE_KEY in .env to the contract's signer private key}"
 
 echo "This script triggers the contract to refresh its public key from the Outlayer worker."
-echo "Ensure you have updated the PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 in the Outlayer secrets if needed."
+echo "Ensure you have updated the PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 in"
+echo "the Outlayer secrets page (if needed): https://outlayer.fastnear.com/secrets"
 echo
 echo "Repository (for reference):"
 echo "  https://github.com/web3-authn/email-dkim-verifier-contract"
