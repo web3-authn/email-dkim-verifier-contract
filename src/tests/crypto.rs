@@ -8,10 +8,9 @@ use sha2::Sha256;
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
 pub(crate) fn setup_worker_static_secret() -> StaticSecret {
-    // Use a fixed seed so tests are deterministic.
-    let seed_bytes = [7u8; 32];
-    let seed_b64 = base64::encode(seed_bytes);
-    std::env::set_var("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64", seed_b64);
+    // Use a fixed hex seed so tests are deterministic.
+    let seed_hex = "07".repeat(32); // 32 bytes of 0x07 as hex
+    std::env::set_var("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64", seed_hex);
 
     // Derive the same StaticSecret as the worker would.
     load_worker_static_secret().expect("worker static secret to load from seed")

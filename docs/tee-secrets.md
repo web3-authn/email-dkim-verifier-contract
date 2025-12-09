@@ -9,7 +9,7 @@ This repo uses Outlayer’s **protected secrets** as the root of trust for the D
   - Intended as a derivation seed, not used directly.
 
 - Key derivation (inside worker):
-  - `seed = base64_decode(PROTECTED_OUTLAYER_WORKER_SK_SEED_B64)`
+  - `seed = hex_decode(PROTECTED_OUTLAYER_WORKER_SK_SEED_B64)` (32 bytes from a 64‑char hex string)
   - `sk = HKDF-SHA256(seed, info = "outlayer-email-dkim-x25519")[0..32]`
   - `pk = X25519PublicKey::from(sk)`
   - `sk` is used for DKIM email decryption; `pk` is the public encryption key the contract exposes.
@@ -61,4 +61,3 @@ To rotate the worker keypair:
    - Call `set_outlayer_encryption_public_key()` on the contract (requires 0.01 NEAR for callback).
 
 This setup gives you a TEE‑protected root secret, a derived X25519 worker key, and a clear, minimal contract surface for publishing the worker’s public key.
-
