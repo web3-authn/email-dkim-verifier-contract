@@ -43,7 +43,7 @@ pub fn request_email_verification_private_inner(
     let code_source = json!({
         "GitHub": {
             "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
-            "commit": "main",
+            "commit": "13f99e811147c000d48269a72bb0ecf6a0bd3de0",
             "build_target": "wasm32-wasip2"
         }
     });
@@ -159,4 +159,3 @@ pub fn on_email_verification_private_result(
     contract.store_verification_result_if_needed(&verify_params.request_id, &vr);
     vr
 }
-
