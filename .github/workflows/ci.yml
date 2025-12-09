@@ -15,6 +15,16 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install cargo-near
+        run: cargo install cargo-near
+
+      - name: Build Contract (WASM)
+        run: |
+          cd email-dkim-verifier-contract
+          cargo near build --no-docker
 
       - name: Run workspace tests
         env:
