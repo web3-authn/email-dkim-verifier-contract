@@ -1,106 +1,94 @@
 use near_sdk::serde_json;
 use near_workspaces::network::Sandbox;
-use near_workspaces::types::{Gas, NearToken};
 use near_workspaces::Worker;
-use serde_json::json;
+use near_workspaces::types::Gas;
+use std::error::Error;
 
-async fn fast_forward(
-    sandbox: &Worker<Sandbox>,
-    blocks: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    sandbox.fast_forward(blocks).await?;
-    Ok(())
-}
-
-/// End-to-end test that:
-/// 1. Stores a VerificationResult keyed by `request_id` by calling the
-///    on_email_verification_onchain_result callback (which schedules a
-///    yield-resume cleanup via promise_yield_create).
-/// 2. Fast-forwards 200+ blocks in the sandbox.
-/// 3. Asserts that get_verification_result(request_id) returns None after
-///    the scheduled clear_verification_result has executed.
 #[tokio::test]
-#[ignore]
-async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn std::error::Error>> {
-    // Compile and deploy the EmailDkimVerifier contract.
-    let contract_wasm = near_workspaces::compile_project("./").await?;
-    let sandbox = near_workspaces::sandbox().await?;
-    let contract = sandbox.dev_deploy(&contract_wasm).await?;
+async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
+    // Load the pre-built contract WASM to avoid deadlock with running cargo test.
+    let wasm = std::fs::read("target/near/email_dkim_verifier_contract.wasm")?;
 
-    // Initialize contract state.
+    let sandbox = near_workspaces::sandbox().await?;
+    let contract = sandbox.dev_deploy(&wasm).await?;
+
+    // Initialize the contract (calls #[init] fn new()).
     let init_outcome = contract
         .call("new")
-        .args_json(json!({}))
-        .gas(Gas::from_tgas(30))
+        .args_json(serde_json::json!({}))
+        .gas(Gas::from_tgas(100))
         .transact()
         .await?;
+    if let Err(_e) = init_outcome.into_result() {
+        return Err("contract initialization failed".into());
+    }
 
-    assert!(init_outcome.is_success(), "EmailDkimVerifier initialization should succeed");
+    // Helper to fast-forward blocks in the sandbox.
+    async fn fast_forward(sandbox: &Worker<Sandbox>, blocks: u64) -> Result<(), Box<dyn Error>> {
+        sandbox.fast_forward(blocks).await?;
+        let _block = sandbox.view_block().await?;
+        Ok(())
+    }
 
-    fast_forward(&sandbox, 1).await?;
+    let request_id = "XYZ999".to_string();
+    let contract_clone = contract.clone();
+    let request_id_clone = request_id.clone();
 
-    // Start from the real Gmail sample used in DKIM tests, and rewrite the
-    // Subject to include a request_id in the new format:
-    //   "recover-<REQUEST_ID> <account_id> ed25519:<public_key>"
-    let request_id = "ABC123";
-    let email_blob_raw = include_str!("data/gmail_reset_full.eml");
-    let original_subject = "Subject: recover berp61.w3a-v1.testnet ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy";
-    let updated_subject = format!(
-        "Subject: recover-{request_id} berp61.w3a-v1.testnet ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy"
-    );
-    let email_blob = email_blob_raw.replacen(original_subject, &updated_subject, 1);
+    // Task 1: Perform the transaction (which will yield and wait).
+    let store_task = async move {
+        contract_clone
+            .call("test_store_verification_result_with_yield")
+            .args_json(serde_json::json!({ "request_id": request_id_clone }))
+            .gas(Gas::from_tgas(30))
+            .transact()
+            .await
+    };
 
-    // Call the main entrypoint so the full flow runs:
-    // - request_email_verification creates the Outlayer promise and yield promise.
-    // - The callback on_email_verification_onchain_result receives a PromiseError
-    //   (since Outlayer is not deployed in this sandbox), stores a `verified: false`
-    //   result for this request_id, and schedules clear_verification_result.
-    let tx_outcome = contract
-        .call("request_email_verification")
-        .args_json(json!({
-            "email_blob": email_blob,
-            "encrypted_email_blob": serde_json::Value::Null,
-            "params": serde_json::Value::Null,
-            "payer_account_id": contract.id(),
-        }))
-        .deposit(NearToken::from_yoctonear(10_000_000_000_000_000_000_000u128))
-        .gas(Gas::from_tgas(50))
-        .transact()
-        .await?;
+    // Task 2: Verify the initial state and trigger the yield resumption.
+    let verify_and_resume_task = async {
+        // Poll until the entry is visible to ensure the transaction has executed the insert.
+        let mut fetched_now: Option<serde_json::Value> = None;
+        for _ in 0..20 {
+            fetched_now = contract
+                .view("get_verification_result")
+                .args_json(serde_json::json!({ "request_id": "XYZ999".to_string() }))
+                .await?
+                .json()?;
+            if fetched_now.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        if fetched_now.is_none() {
+            return Err("Timed out waiting for verification result to be stored".into());
+        }
+
+        // Fast-forward 200+ blocks so the yield‑resume callback runs on-chain.
+        // This effectively "unblocks" the store_task.
+        fast_forward(&sandbox, 240).await?;
+        Ok::<(), Box<dyn std::error::Error>>(())
+    };
+
+    // Run both tasks concurrently. verify_and_resume_task will unblock store_task.
+    let (store_outcome, verify_result) = tokio::join!(store_task, verify_and_resume_task);
+
+    // Propagate errors.
+    verify_result?;
+    let outcome = store_outcome?;
+    assert!(outcome.is_success());
+
+    // After yield‑resume runs, the entry should be gone without calling
+    // clear_verification_result manually.
+    let fetched_later: Option<serde_json::Value> = contract
+        .view("get_verification_result")
+        .args_json(serde_json::json!({ "request_id": "XYZ999".to_string() }))
+        .await?
+        .json()?;
+
     assert!(
-        tx_outcome.is_success(),
-        "request_email_verification transaction should succeed"
-    );
-
-    fast_forward(&sandbox, 1).await?;
-
-    // Before fast-forwarding 200+ blocks, the verification result should
-    // be present for this request_id.
-    let view_before = contract
-        .call("get_verification_result")
-        .args_json(json!({ "request_id": request_id }))
-        .view()
-        .await?;
-    let before: Option<serde_json::Value> = view_before.json()?;
-    assert!(
-        before.is_some(),
-        "expected verification result to be present before yield-resume cleanup"
-    );
-
-    // Fast-forward ~200+ blocks in the sandbox to trigger yield-resume.
-    fast_forward(&sandbox, 240).await?;
-
-    // After yield-resume executes clear_verification_result, the entry should
-    // be removed and get_verification_result should return None.
-    let view_after = contract
-        .call("get_verification_result")
-        .args_json(json!({ "request_id": request_id }))
-        .view()
-        .await?;
-    let after: Option<serde_json::Value> = view_after.json()?;
-    assert!(
-        after.is_none(),
-        "expected verification result to be cleared after yield-resume"
+        fetched_later.is_none(),
+        "expected entry to be cleared automatically after yield-resume"
     );
 
     Ok(())
