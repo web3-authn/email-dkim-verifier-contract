@@ -38,10 +38,11 @@ async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
     let store_task = async move {
         contract_clone
             .call("test_store_verification_result_with_yield")
-            .args_json(serde_json::json!({ "request_id": request_id_clone }))
+            .args_json(serde_json::json!({ "request_id": request_id }))
             .gas(Gas::from_tgas(30))
-            .transact()
-            .await
+            .transact().await
+            // Note: We could also use `transact_async()` to fire-and-forget the transaction
+            // and await its result later, effectively avoiding the need for `tokio::join!`.
     };
 
     // Task 2: Verify the initial state and trigger the yield resumption.
