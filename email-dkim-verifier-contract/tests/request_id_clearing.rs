@@ -31,8 +31,8 @@ async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
         .gas(Gas::from_tgas(100))
         .transact()
         .await?;
-    if let Err(_e) = init_outcome.into_result() {
-        return Err("contract initialization failed".into());
+    if let Err(e) = init_outcome.into_result() {
+        return Err(format!("contract initialization failed: {:?}", e).into());
     }
 
     // Helper to fast-forward blocks in the sandbox.

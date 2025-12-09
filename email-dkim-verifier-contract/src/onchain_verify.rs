@@ -4,7 +4,7 @@ use crate::parsers::{
 };
 use crate::{
     ext_outlayer, ext_self, EmailDkimVerifier, VerificationResult,
-    WorkerResponse, MIN_DEPOSIT, OUTLAYER_CONTRACT_ID, OUTLAYER_WORKER_COMMIT,
+    WorkerResponse, MIN_DEPOSIT_1, OUTLAYER_CONTRACT_ID, OUTLAYER_WORKER_COMMIT,
 };
 use near_sdk::serde_json::{self, json};
 use near_sdk::{env, AccountId, NearToken, Promise, PromiseError};
@@ -35,11 +35,11 @@ pub fn request_email_verification_onchain_inner(
     let caller = env::predecessor_account_id();
     let attached = env::attached_deposit().as_yoctonear();
     assert!(
-        attached >= MIN_DEPOSIT,
+        attached >= MIN_DEPOSIT_1,
         "Attach at least 0.01 NEAR for Outlayer execution"
     );
 
-    let outlayer_deposit = MIN_DEPOSIT;
+    let outlayer_deposit = MIN_DEPOSIT_1;
     let refund = attached.saturating_sub(outlayer_deposit);
 
     if refund > 0 {

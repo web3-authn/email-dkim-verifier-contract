@@ -24,10 +24,10 @@ const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
 // Method name returned by the Outlayer worker for encrypted DKIM verification.
 const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
 // Minimum deposit forwarded to OutLayer (0.01 NEAR).
-// OutLayer currently requires ~7.001e21 yoctoNEAR for the configured limits,
-// so 1e22 yoctoNEAR provides a safe margin.
-pub const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
+// OutLayer currently requires XX yoctoNEAR
+pub const MIN_DEPOSIT_1: u128 = 10_000_000_000_000_000_000_000;
 pub const MIN_DEPOSIT_2: u128 = 20_000_000_000_000_000_000_000;
+pub const MIN_DEPOSIT_3: u128 = 30_000_000_000_000_000_000_000;
 
 #[derive(BorshSerialize, BorshStorageKey)]
 enum StorageKey {

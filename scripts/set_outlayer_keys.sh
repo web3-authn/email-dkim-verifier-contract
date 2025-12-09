@@ -36,7 +36,7 @@ echo "Updating contract public key via set_outlayer_encryption_public_key..."
 
 near contract call-function as-transaction "$CONTRACT_ID" set_outlayer_encryption_public_key \
   json-args {} \
-  prepaid-gas '100.0 Tgas' \
+  prepaid-gas '300.0 Tgas' \
   attached-deposit '0.05 NEAR' \
   sign-as "$CONTRACT_ID" \
   network-config "$NEAR_NETWORK_ID" \

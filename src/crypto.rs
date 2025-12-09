@@ -30,11 +30,29 @@ pub fn get_worker_public_key() -> Result<String, String> {
 }
 
 pub(crate) fn load_worker_static_secret() -> Result<StaticSecret, String> {
-    let seed_b64 = std::env::var("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64")
+    let seed_raw = std::env::var("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64")
         .map_err(|_| "missing PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 env var".to_string())?;
 
-    let seed_bytes = base64::decode(seed_b64.trim())
-         .map_err(|_| "PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 must be base64-encoded".to_string())?;
+    let seed_str = seed_raw.trim();
+
+    // First, try base64 (old behavior, still supported).
+    let seed_bytes = match base64::decode(seed_str) {
+        Ok(bytes) if bytes.len() == 32 => bytes,
+        _ => {
+            // Fallback: accept a 64-char hex string (Outlayer "Hex 32 bytes" secret type).
+            if seed_str.len() == 64 && seed_str.chars().all(|c| c.is_ascii_hexdigit()) {
+                let mut out = Vec::with_capacity(32);
+                for i in (0..64).step_by(2) {
+                    let byte = u8::from_str_radix(&seed_str[i..i + 2], 16)
+                        .map_err(|_| "PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 must be base64 or hex-encoded 32 bytes".to_string())?;
+                    out.push(byte);
+                }
+                out
+            } else {
+                return Err("PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 must be base64 or hex-encoded 32 bytes".to_string());
+            }
+        }
+    };
 
     let hk = Hkdf::<Sha256>::new(None, &seed_bytes);
     let mut okm = [0u8; 32];
