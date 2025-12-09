@@ -3,11 +3,13 @@ mod verify_dkim;
 
 use crate::parsers::{
     extract_header_value, parse_email_timestamp_ms, parse_from_address, parse_recover_instruction,
-    parse_recover_public_key_from_body, parse_recover_subject,
+    parse_recover_public_key_from_body, parse_recover_request_id, parse_recover_subject,
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+use near_sdk::collections::UnorderedMap;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
-use near_sdk::{env, ext_contract, near, AccountId, NearToken, Promise, PromiseError};
+use near_sdk::{env, ext_contract, near, AccountId, BorshStorageKey, NearToken, Promise, PromiseError};
 use schemars::JsonSchema;
 
 pub use crate::parsers::parse_dkim_tags;
@@ -20,13 +22,21 @@ const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
 // OutLayer currently requires ~7.001e21 yoctoNEAR for the configured limits,
 // so 1e22 yoctoNEAR provides a safe margin.
 const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
+// TTL for stored verification results keyed by request_id (in milliseconds).
+const VERIFICATION_RESULT_TTL_MS: u64 = 24 * 60 * 60 * 1000; // 24 hours
+
+#[derive(BorshSerialize, BorshStorageKey)]
+enum StorageKey {
+    VerificationResultsByRequestId,
+}
 
 #[near(contract_state)]
 pub struct EmailDkimVerifier {
     outlayer_encryption_public_key: String,
+    verification_results_by_request_id: UnorderedMap<String, StoredVerificationResult>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, BorshSerialize, BorshDeserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct VerificationResult {
     pub verified: bool,
@@ -34,6 +44,12 @@ pub struct VerificationResult {
     pub new_public_key: String,
     pub from_address: String,
     pub email_timestamp_ms: Option<u64>,
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+struct StoredVerificationResult {
+    result: VerificationResult,
+    created_at_ms: u64,
 }
 
 #[ext_contract(ext_outlayer)]
@@ -63,6 +79,8 @@ trait ExtEmailDkimVerifier {
         requested_by: AccountId,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult;
+
+    fn clear_verification_result(&mut self, request_id: String);
 }
 
 #[derive(near_sdk::serde::Deserialize)]
@@ -102,6 +120,9 @@ impl EmailDkimVerifier {
     pub fn new() -> Self {
         Self {
             outlayer_encryption_public_key: OUTLAYER_ENCRYPTION_PUBKEY.to_string(),
+            verification_results_by_request_id: UnorderedMap::new(
+                StorageKey::VerificationResultsByRequestId,
+            ),
         }
     }
 
@@ -121,6 +142,16 @@ impl EmailDkimVerifier {
             "Only the contract owner can set the Outlayer encryption public key"
         );
         self.outlayer_encryption_public_key = public_key;
+    }
+
+    pub fn get_verification_result(&self, request_id: String) -> Option<VerificationResult> {
+        let stored = self.verification_results_by_request_id.get(&request_id)?;
+        if is_expired(stored.created_at_ms, VERIFICATION_RESULT_TTL_MS) {
+            // Log but do not mutate state in a view method.
+            env::log_str("verification result expired for request_id");
+            return None;
+        }
+        Some(stored.result)
     }
 
     /// Unified entrypoint for email DKIM verification.
@@ -300,16 +331,21 @@ impl EmailDkimVerifier {
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult {
         let _ = requested_by;
+        let subject = extract_header_value(&email_blob, "Subject");
+        let request_id = subject.as_deref().and_then(parse_recover_request_id);
+
         let value = match result {
             Ok(Some(v)) => v,
             _ => {
-                return VerificationResult {
+                let vr = VerificationResult {
                     verified: false,
                     account_id: String::new(),
                     new_public_key: String::new(),
                     from_address: String::new(),
                     email_timestamp_ms: None,
-                }
+                };
+                self.store_verification_result_if_needed(&request_id, &vr);
+                return vr;
             }
         };
 
@@ -317,13 +353,15 @@ impl EmailDkimVerifier {
             Ok(r) => r,
             Err(e) => {
                 env::log_str(&format!("Failed to parse worker response: {e}"));
-                return VerificationResult {
+                let vr = VerificationResult {
                     verified: false,
                     account_id: String::new(),
                     new_public_key: String::new(),
                     from_address: String::new(),
                     email_timestamp_ms: None,
                 };
+                self.store_verification_result_if_needed(&request_id, &vr);
+                return vr;
             }
         };
 
@@ -335,62 +373,72 @@ impl EmailDkimVerifier {
                 "Unexpected worker method in on_email_verification_onchain_result: {}",
                 worker_response.method
             ));
-            return VerificationResult {
+            let vr = VerificationResult {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
             };
+            self.store_verification_result_if_needed(&request_id, &vr);
+            return vr;
         }
 
         let dns_params: DnsLookupParams = match serde_json::from_value(worker_response.params.clone()) {
                 Ok(p) => p,
                 Err(e) => {
                     env::log_str(&format!("Failed to parse get-dns-records params: {e}"));
-                    return VerificationResult {
+                    let vr = VerificationResult {
                         verified: false,
                         account_id: String::new(),
                         new_public_key: String::new(),
                         from_address: String::new(),
                         email_timestamp_ms: None,
                     };
+                    self.store_verification_result_if_needed(&request_id, &vr);
+                    return vr;
                 }
             };
 
         if let Some(err) = dns_params.error.as_deref() {
             env::log_str(&format!("DKIM DNS fetch error: {err}"));
-            return VerificationResult {
+            let vr = VerificationResult {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
             };
+            self.store_verification_result_if_needed(&request_id, &vr);
+            return vr;
         }
 
         let record_strings = dns_params.records;
 
         if record_strings.is_empty() {
-            return VerificationResult {
+            let vr = VerificationResult {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
             };
+            self.store_verification_result_if_needed(&request_id, &vr);
+            return vr;
         }
 
         let verified = verify_dkim(&email_blob, &record_strings);
 
         if !verified {
-            return VerificationResult {
+            let vr = VerificationResult {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
             };
+            self.store_verification_result_if_needed(&request_id, &vr);
+            return vr;
         }
 
         let subject = extract_header_value(&email_blob, "Subject");
@@ -415,13 +463,15 @@ impl EmailDkimVerifier {
         let from_address = parse_from_address(&email_blob);
         let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
 
-        VerificationResult {
+        let vr = VerificationResult {
             verified: true,
             account_id,
             new_public_key,
             from_address,
             email_timestamp_ms,
-        }
+        };
+        self.store_verification_result_if_needed(&request_id, &vr);
+        vr
     }
 
     #[private]
@@ -434,13 +484,15 @@ impl EmailDkimVerifier {
         let value = match result {
             Ok(Some(v)) => v,
             _ => {
-                return VerificationResult {
+                let vr = VerificationResult {
                     verified: false,
                     account_id: String::new(),
                     new_public_key: String::new(),
                     from_address: String::new(),
                     email_timestamp_ms: None,
-                }
+                };
+                // No request_id available in the current private flow.
+                return vr;
             }
         };
 
@@ -450,50 +502,53 @@ impl EmailDkimVerifier {
                 env::log_str(&format!(
                     "Failed to parse worker response (private): {e}"
                 ));
-                return VerificationResult {
+                let vr = VerificationResult {
                     verified: false,
                     account_id: String::new(),
                     new_public_key: String::new(),
                     from_address: String::new(),
                     email_timestamp_ms: None,
                 };
+                return vr;
             }
         };
 
-        if worker_response.method != "request_email_verification_private" {
+        if worker_response.method != "verify-encrypted-email" {
             env::log_str(&format!(
                 "Unexpected worker method in on_email_verification_private_result: {}",
                 worker_response.method
             ));
-            return VerificationResult {
+            let vr = VerificationResult {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
             };
+            return vr;
         }
 
         let verify_params: VerifyParams =
             match serde_json::from_value(worker_response.params.clone()) {
-                Ok(p) => p,
-                Err(e) => {
-                    env::log_str(&format!(
-                        "Failed to parse verifyEncryptedDKIM params: {e}"
-                    ));
-                    return VerificationResult {
-                        verified: false,
-                        account_id: String::new(),
-                        new_public_key: String::new(),
-                        from_address: String::new(),
-                        email_timestamp_ms: None,
-                    };
-                }
-            };
+            Ok(p) => p,
+            Err(e) => {
+                env::log_str(&format!(
+                    "Failed to parse verify-encrypted-email params: {e}"
+                ));
+                let vr = VerificationResult {
+                    verified: false,
+                    account_id: String::new(),
+                    new_public_key: String::new(),
+                    from_address: String::new(),
+                    email_timestamp_ms: None,
+                };
+                return vr;
+            }
+        };
 
         if let Some(err) = verify_params.error.as_deref() {
             env::log_str(&format!(
-                "verifyEncryptedDKIM worker error: {err}"
+                "verify-encrypted-email worker error: {err}"
             ));
         }
 
@@ -505,10 +560,41 @@ impl EmailDkimVerifier {
             email_timestamp_ms: verify_params.email_timestamp_ms,
         }
     }
+
+    #[private]
+    pub fn clear_verification_result(&mut self, request_id: String) {
+        self.verification_results_by_request_id.remove(&request_id);
+    }
 }
 
 impl Default for EmailDkimVerifier {
     fn default() -> Self {
         env::panic_str("Contract is not initialized");
+    }
+}
+
+fn is_expired(created_at_ms: u64, ttl_ms: u64) -> bool {
+    let now_ms = env::block_timestamp() / 1_000_000;
+    now_ms.saturating_sub(created_at_ms) > ttl_ms
+}
+
+impl EmailDkimVerifier {
+    fn store_verification_result_if_needed(
+        &mut self,
+        request_id: &Option<String>,
+        result: &VerificationResult,
+    ) {
+        let Some(id) = request_id else {
+            return;
+        };
+        if id.is_empty() {
+            return;
+        }
+
+        let entry = StoredVerificationResult {
+            result: result.clone(),
+            created_at_ms: env::block_timestamp() / 1_000_000,
+        };
+        self.verification_results_by_request_id.insert(id, &entry);
     }
 }

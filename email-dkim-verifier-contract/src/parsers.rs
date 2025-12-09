@@ -38,12 +38,19 @@ pub fn parse_recover_subject(subject: &str) -> Option<AccountId> {
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    if kind != "recover" {
+    let account_id_str = if kind == "recover" {
+        // Legacy format: "recover <account_id> ..."
+        parts.next()?
+    } else if let Some(rest) = kind.strip_prefix("recover-") {
+        // New format: "recover-<REQUEST_ID> <account_id> ..."
+        // Skip the request_id token; next token must be account_id.
+        let _request_id = rest;
+        parts.next()?
+    } else {
         return None;
-    }
+    };
 
-    let account_id_str = parts.next()?.trim();
-    let account_id: AccountId = match account_id_str.parse() {
+    let account_id: AccountId = match account_id_str.trim().parse() {
         Ok(a) => a,
         Err(_) => return None,
     };
@@ -60,12 +67,18 @@ pub fn parse_recover_instruction(subject: &str) -> Option<(AccountId, String)> {
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    if kind != "recover" {
+    let account_id_str = if kind == "recover" {
+        // Legacy format.
+        parts.next()?
+    } else if let Some(rest) = kind.strip_prefix("recover-") {
+        // New format with request_id in the first token.
+        let _request_id = rest;
+        parts.next()?
+    } else {
         return None;
-    }
+    };
 
-    let account_id_str = parts.next()?.trim();
-    let account_id: AccountId = match account_id_str.parse() {
+    let account_id: AccountId = match account_id_str.trim().parse() {
         Ok(a) => a,
         Err(_) => return None,
     };
@@ -81,6 +94,25 @@ pub fn parse_recover_instruction(subject: &str) -> Option<(AccountId, String)> {
 
     let new_public_key = new_public_key?;
     Some((account_id, new_public_key))
+}
+
+/// Parse the short request_id from a recovery Subject header.
+///
+/// Expected format:
+///   "recover-<REQUEST_ID> <account_id> ed25519:<public_key>"
+/// Returns Some("<REQUEST_ID>") when the prefix is present; otherwise None.
+pub fn parse_recover_request_id(subject: &str) -> Option<String> {
+    let subject = subject.trim();
+    let mut parts = subject.split_whitespace();
+    let first = parts.next()?;
+
+    if let Some(rest) = first.strip_prefix("recover-") {
+        if !rest.is_empty() {
+            return Some(rest.to_string());
+        }
+    }
+
+    None
 }
 
 pub fn parse_dkim_tags(value: &str) -> std::collections::HashMap<String, String> {
@@ -573,6 +605,19 @@ Subject: recover alice.testnet ed25519:NEW_PUBLIC_KEY\n\
 ed25519:NEW_PUBLIC_KEY\n";
         let key_from_body = parse_recover_public_key_from_body(email).expect("key");
         assert_eq!(key_from_body, "ed25519:NEW_PUBLIC_KEY");
+    }
+
+    #[test]
+    fn parse_recover_subject_with_request_id() {
+        let subject = "recover-123ABC alice.testnet ed25519:NEW_PUBLIC_KEY";
+
+        let (account_id, key_from_subject) =
+            parse_recover_instruction(subject).expect("instruction");
+        assert_eq!(account_id.as_str(), "alice.testnet");
+        assert_eq!(key_from_subject, "ed25519:NEW_PUBLIC_KEY");
+
+        let req_id = parse_recover_request_id(subject).expect("request id");
+        assert_eq!(req_id, "123ABC");
     }
 
     #[test]

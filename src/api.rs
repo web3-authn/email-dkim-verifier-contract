@@ -204,7 +204,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
         Ok(records) => records,
         Err(e) => {
             return ResponseType {
-                method: "verifyEncryptedDKIM".to_string(),
+                method: "verify-encrypted-email".to_string(),
                 params: serde_json::json!({
                     "verified": false,
                     "account_id": "",
