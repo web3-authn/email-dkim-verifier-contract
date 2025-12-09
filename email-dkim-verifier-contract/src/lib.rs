@@ -106,6 +106,11 @@ impl EmailDkimVerifier {
     }
 
     pub fn get_outlayer_encryption_public_key(&self) -> String {
+        if self.outlayer_encryption_public_key.trim().is_empty() {
+            env::panic_str(
+                "Outlayer encryption public key is not configured on EmailDkimVerifier",
+            );
+        }
         self.outlayer_encryption_public_key.clone()
     }
 
