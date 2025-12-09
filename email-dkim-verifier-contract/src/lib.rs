@@ -27,6 +27,7 @@ const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
 // OutLayer currently requires ~7.001e21 yoctoNEAR for the configured limits,
 // so 1e22 yoctoNEAR provides a safe margin.
 pub const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
+pub const MIN_DEPOSIT_2: u128 = 20_000_000_000_000_000_000_000;
 
 #[derive(BorshSerialize, BorshStorageKey)]
 enum StorageKey {
@@ -143,8 +144,8 @@ impl EmailDkimVerifier {
 
         let attached = env::attached_deposit().as_yoctonear();
         assert!(
-            attached >= MIN_DEPOSIT,
-            "Attach at least 0.01 NEAR for Outlayer execution"
+            attached >= MIN_DEPOSIT_2,
+            "Attach at least 0.02 NEAR for Outlayer execution"
         );
 
         let input_payload = serde_json::json!({
@@ -168,7 +169,7 @@ impl EmailDkimVerifier {
         });
 
         ext_outlayer::ext(OUTLAYER_CONTRACT_ID.parse().unwrap())
-            .with_attached_deposit(near_sdk::NearToken::from_yoctonear(MIN_DEPOSIT))
+            .with_attached_deposit(near_sdk::NearToken::from_yoctonear(MIN_DEPOSIT_2))
             .with_unused_gas_weight(1)
             .request_execution(
                 code_source,
