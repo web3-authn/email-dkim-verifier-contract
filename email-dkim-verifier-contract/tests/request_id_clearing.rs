@@ -4,10 +4,30 @@ use near_workspaces::Worker;
 use near_workspaces::types::Gas;
 use std::error::Error;
 
+// CI helper to find the WASM file in various likely locations
+fn locate_wasm() -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let candidates = vec![
+        manifest_dir.join("target/near/email_dkim_verifier_contract.wasm"),
+        manifest_dir.join("../target/near/email_dkim_verifier_contract.wasm"),
+        manifest_dir.join("target/wasm32-unknown-unknown/release/email_dkim_verifier_contract.wasm"),
+        manifest_dir.join("../target/wasm32-unknown-unknown/release/email_dkim_verifier_contract.wasm"),
+        manifest_dir.join("target/wasm32-unknown-unknown/debug/email_dkim_verifier_contract.wasm"),
+    ];
+
+    for path in candidates {
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    Err("Could not find contract WASM file. Ensure you have built the contract (e.g. `cargo near build`)".into())
+}
+
 #[tokio::test]
 async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
-    // Load the pre-built contract WASM to avoid deadlock with running cargo test.
-    let wasm = std::fs::read("target/near/email_dkim_verifier_contract.wasm")?;
+
+    let wasm_path = locate_wasm()?;
+    let wasm = std::fs::read(wasm_path)?;
 
     let sandbox = near_workspaces::sandbox().await?;
     let contract = sandbox.dev_deploy(&wasm).await?;
@@ -32,7 +52,7 @@ async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
 
     let request_id = "XYZ999".to_string();
     let contract_clone = contract.clone();
-    let request_id_clone = request_id.clone();
+    let _request_id_clone = request_id.clone();
 
     // Task 1: Perform the transaction (which will yield and wait).
     let store_task = async move {

@@ -8,7 +8,7 @@ use near_sdk::store::IterableMap;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
 use near_sdk::{
-    env, ext_contract, near, AccountId, BorshStorageKey, Gas, GasWeight, NearToken, Promise,
+    env, ext_contract, near, AccountId, BorshStorageKey, Gas, GasWeight, Promise,
     PromiseError,
 };
 use schemars::JsonSchema;
@@ -54,6 +54,7 @@ pub struct StoredVerificationResult {
 }
 
 #[ext_contract(ext_outlayer)]
+#[allow(dead_code)]
 trait OutLayer {
     fn request_execution(
         &mut self,
@@ -67,6 +68,7 @@ trait OutLayer {
 }
 
 #[ext_contract(ext_self)]
+#[allow(dead_code)]
 trait ExtEmailDkimVerifier {
     fn on_email_verification_onchain_result(
         &mut self,
@@ -80,8 +82,6 @@ trait ExtEmailDkimVerifier {
         requested_by: AccountId,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult;
-
-    fn clear_verification_result(&mut self, request_id: String);
 }
 
 #[derive(near_sdk::serde::Deserialize)]
@@ -89,18 +89,6 @@ trait ExtEmailDkimVerifier {
 struct WorkerResponse {
     method: String,
     params: serde_json::Value,
-}
-
-#[derive(near_sdk::serde::Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-struct DnsLookupParams {
-    selector: Option<String>,
-    domain: Option<String>,
-    name: String,
-    #[serde(rename = "type")]
-    record_type: String,
-    records: Vec<String>,
-    error: Option<String>,
 }
 
 #[derive(near_sdk::serde::Deserialize)]

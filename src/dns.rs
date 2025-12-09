@@ -33,8 +33,8 @@ pub fn fetch_txt_records(name: &str) -> Result<Vec<String>, String> {
         .body()
         .map_err(|e| format!("failed to read HTTP body: {e}"))?;
 
-    let dns: DnsResponse =
-        serde_json::from_slice(&body_bytes).map_err(|e| format!("failed to parse DNS JSON: {e}"))?;
+    let dns: DnsResponse = serde_json::from_slice(&body_bytes)
+        .map_err(|e| format!("failed to parse DNS JSON: {e}"))?;
 
     let mut records = Vec::new();
     if let Some(answers) = dns.answer {

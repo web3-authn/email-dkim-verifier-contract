@@ -3,11 +3,23 @@ use crate::parsers::{
     parse_recover_public_key_from_body, parse_recover_subject,
 };
 use crate::{
-    ext_outlayer, ext_self, DnsLookupParams, EmailDkimVerifier, VerificationResult,
+    ext_outlayer, ext_self, EmailDkimVerifier, VerificationResult,
     WorkerResponse, MIN_DEPOSIT, OUTLAYER_CONTRACT_ID,
 };
 use near_sdk::serde_json::{self, json};
-use near_sdk::{env, AccountId, Gas, GasWeight, NearToken, Promise, PromiseError};
+use near_sdk::{env, AccountId, NearToken, Promise, PromiseError};
+
+#[derive(near_sdk::serde::Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct DnsLookupParams {
+    selector: Option<String>,
+    domain: Option<String>,
+    name: String,
+    #[serde(rename = "type")]
+    record_type: String,
+    records: Vec<String>,
+    error: Option<String>,
+}
 
 /// Internal helper: on-chain DKIM verification request path.
 pub fn request_email_verification_onchain_inner(

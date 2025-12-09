@@ -409,7 +409,7 @@ fn days_in_month(year: i32, month: u32) -> Option<u32> {
     if month < 1 || month > 12 {
         return None;
     }
-    let mut days = match month {
+    let days = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
         2 => {

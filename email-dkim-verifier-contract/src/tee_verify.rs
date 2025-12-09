@@ -1,10 +1,10 @@
-use crate::parsers::{extract_header_value, parse_email_timestamp_ms, parse_from_address};
+// use crate::parsers::{extract_header_value, parse_email_timestamp_ms, parse_from_address};
 use crate::{
     ext_outlayer, ext_self, EmailDkimVerifier, VerificationResult, VerifyParams,
     WorkerResponse, MIN_DEPOSIT, OUTLAYER_CONTRACT_ID, VERIFY_ENCRYPTED_EMAIL_METHOD,
 };
 use near_sdk::serde_json::{self, json};
-use near_sdk::{env, AccountId, Gas, GasWeight, NearToken, Promise, PromiseError};
+use near_sdk::{env, AccountId, NearToken, Promise, PromiseError};
 
 /// Internal helper: encrypted/TEE DKIM verification request path.
 pub fn request_email_verification_private_inner(

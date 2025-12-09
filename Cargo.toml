@@ -1,5 +1,5 @@
 [package]
-name = "dkim-verifier-contract"
+name = "email-dkim-verifier-contract"
 version = "0.3.0"
 edition = "2021"
 
