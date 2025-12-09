@@ -188,6 +188,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
                     "email_timestamp_ms": null,
                     "request_id": serde_json::Value::Null,
                     "error": e,
+                    "context": verify_params.context,
                 }),
             }
         }
@@ -291,6 +292,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
             "email_timestamp_ms": email_timestamp_ms,
             "request_id": request_id,
             "error": serde_json::Value::Null,
+            "context": verify_params.context,
         }),
     }
 }
@@ -307,4 +309,3 @@ fn handle_get_public_key() -> ResponseType {
         },
     }
 }
-
