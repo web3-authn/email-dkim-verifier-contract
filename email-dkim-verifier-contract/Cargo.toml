@@ -21,7 +21,7 @@ container_build_command = [
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-near-sdk = { version = "5.17.2" }
+near-sdk = { version = "5.20.1", features = ["unit-testing"] }
 borsh = "1.5"
 base64 = "0.13"
 rsa = { version = "0.10.0-rc.10", default-features = false, features = ["sha2", "encoding"] }
@@ -30,3 +30,7 @@ schemars = "0.8"
 
 [features]
 unit-testing = ["near-sdk/unit-testing"]
+
+[dev-dependencies]
+near-workspaces = { version = "0.21.0", features = ["unstable"] }
+tokio = { version = "1.12.0", features = ["full"] }

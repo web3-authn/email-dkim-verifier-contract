@@ -1,15 +1,16 @@
 mod parsers;
 mod verify_dkim;
+mod onchain_verify;
+mod tee_verify;
 
-use crate::parsers::{
-    extract_header_value, parse_email_timestamp_ms, parse_from_address, parse_recover_instruction,
-    parse_recover_public_key_from_body, parse_recover_request_id, parse_recover_subject,
-};
 use borsh::{BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
+use near_sdk::store::IterableMap;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::{self, json};
-use near_sdk::{env, ext_contract, near, AccountId, BorshStorageKey, NearToken, Promise, PromiseError};
+use near_sdk::{
+    env, ext_contract, near, AccountId, BorshStorageKey, Gas, GasWeight, NearToken, Promise,
+    PromiseError,
+};
 use schemars::JsonSchema;
 
 pub use crate::parsers::parse_dkim_tags;
@@ -23,9 +24,7 @@ const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
 // Minimum deposit forwarded to OutLayer (0.01 NEAR).
 // OutLayer currently requires ~7.001e21 yoctoNEAR for the configured limits,
 // so 1e22 yoctoNEAR provides a safe margin.
-const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
-// TTL for stored verification results keyed by request_id (in milliseconds).
-const VERIFICATION_RESULT_TTL_MS: u64 = 24 * 60 * 60 * 1000; // 24 hours
+pub const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 
 #[derive(BorshSerialize, BorshStorageKey)]
 enum StorageKey {
@@ -35,7 +34,7 @@ enum StorageKey {
 #[near(contract_state)]
 pub struct EmailDkimVerifier {
     outlayer_encryption_public_key: String,
-    verification_results_by_request_id: UnorderedMap<String, StoredVerificationResult>,
+    verification_results_by_request_id: IterableMap<String, StoredVerificationResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, BorshSerialize, BorshDeserialize)]
@@ -49,7 +48,7 @@ pub struct VerificationResult {
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
-struct StoredVerificationResult {
+pub struct StoredVerificationResult {
     result: VerificationResult,
     created_at_ms: u64,
 }
@@ -112,6 +111,8 @@ struct VerifyParams {
     new_public_key: String,
     from_address: String,
     email_timestamp_ms: Option<u64>,
+    #[serde(default)]
+    request_id: Option<String>,
     error: Option<String>,
 }
 
@@ -122,7 +123,7 @@ impl EmailDkimVerifier {
     pub fn new() -> Self {
         Self {
             outlayer_encryption_public_key: OUTLAYER_ENCRYPTION_PUBKEY.to_string(),
-            verification_results_by_request_id: UnorderedMap::new(
+            verification_results_by_request_id: IterableMap::new(
                 StorageKey::VerificationResultsByRequestId,
             ),
         }
@@ -147,13 +148,9 @@ impl EmailDkimVerifier {
     }
 
     pub fn get_verification_result(&self, request_id: String) -> Option<VerificationResult> {
-        let stored = self.verification_results_by_request_id.get(&request_id)?;
-        if is_expired(stored.created_at_ms, VERIFICATION_RESULT_TTL_MS) {
-            // Log but do not mutate state in a view method.
-            env::log_str("verification result expired for request_id");
-            return None;
-        }
-        Some(stored.result)
+        self.verification_results_by_request_id
+            .get(&request_id)
+            .map(|stored| stored.result.clone())
     }
 
     /// Unified entrypoint for email DKIM verification.
@@ -181,11 +178,9 @@ impl EmailDkimVerifier {
                 email,
                 params,
             ),
-            (None, Some(blob)) => self.request_email_verification_private_inner(
-                payer_account_id,
-                blob,
-                params,
-            ),
+            (None, Some(blob)) => {
+                self.request_email_verification_private_inner(payer_account_id, blob, params)
+            }
             (Some(_), Some(_)) => {
                 env::panic_str("provide either email_blob or encrypted_email_blob, not both")
             }
@@ -201,63 +196,12 @@ impl EmailDkimVerifier {
         email_blob: String,
         params: Option<serde_json::Value>,
     ) -> Promise {
-        let caller = env::predecessor_account_id();
-        let attached = env::attached_deposit().as_yoctonear();
-        assert!(
-            attached >= MIN_DEPOSIT,
-            "Attach at least 0.01 NEAR for Outlayer execution"
-        );
-
-        let outlayer_deposit = MIN_DEPOSIT;
-        let refund = attached.saturating_sub(outlayer_deposit);
-
-        if refund > 0 {
-            env::log_str(&format!(
-                "Refunding {} yoctoNEAR of unused DKIM fees to {}",
-                refund, caller
-            ));
-            Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
-        }
-
-        let input_payload = json!({
-            "method": "get-dns-records",
-            "params": {
-                "email_blob": email_blob,
-                "params": params.unwrap_or_else(|| json!({})),
-            },
-        })
-        .to_string();
-
-        let code_source = json!({
-            "GitHub": {
-                "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
-                "commit": "main",
-                "build_target": "wasm32-wasip2"
-            }
-        });
-
-        let resource_limits = json!({
-            "max_instructions": 10_000_000_000u64,
-            "max_memory_mb": 256u64,
-            "max_execution_seconds": 60u64
-        });
-
-        ext_outlayer::ext(OUTLAYER_CONTRACT_ID.parse().unwrap())
-            .with_attached_deposit(NearToken::from_yoctonear(outlayer_deposit))
-            .with_unused_gas_weight(1)
-            .request_execution(
-                code_source,
-                resource_limits,
-                input_payload,
-                None,
-                "Json".to_string(),
-                Some(payer_account_id),
-            )
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_unused_gas_weight(1)
-                    .on_email_verification_onchain_result(caller, email_blob),
-            )
+        onchain_verify::request_email_verification_onchain_inner(
+            self,
+            payer_account_id,
+            email_blob,
+            params,
+        )
     }
 
     fn request_email_verification_private_inner(
@@ -266,63 +210,12 @@ impl EmailDkimVerifier {
         encrypted_email_blob: serde_json::Value,
         params: Option<serde_json::Value>,
     ) -> Promise {
-        let caller = env::predecessor_account_id();
-        let attached = env::attached_deposit().as_yoctonear();
-        assert!(
-            attached >= MIN_DEPOSIT,
-            "Attach at least 0.01 NEAR for Outlayer execution"
-        );
-
-        let outlayer_deposit = MIN_DEPOSIT;
-        let refund = attached.saturating_sub(outlayer_deposit);
-
-        if refund > 0 {
-            env::log_str(&format!(
-                "Refunding {} yoctoNEAR of unused DKIM fees to {}",
-                refund, caller
-            ));
-            Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
-        }
-
-        let input_payload = json!({
-            "method": VERIFY_ENCRYPTED_EMAIL_METHOD,
-            "params": {
-                "encrypted_email_blob": encrypted_email_blob,
-                "context": params.unwrap_or_else(|| json!({})),
-            },
-        })
-        .to_string();
-
-        let code_source = json!({
-            "GitHub": {
-                "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
-                "commit": "main",
-                "build_target": "wasm32-wasip2"
-            }
-        });
-
-        let resource_limits = json!({
-            "max_instructions": 10_000_000_000u64,
-            "max_memory_mb": 256u64,
-            "max_execution_seconds": 60u64
-        });
-
-        ext_outlayer::ext(OUTLAYER_CONTRACT_ID.parse().unwrap())
-            .with_attached_deposit(NearToken::from_yoctonear(outlayer_deposit))
-            .with_unused_gas_weight(1)
-            .request_execution(
-                code_source,
-                resource_limits,
-                input_payload,
-                None,
-                "Json".to_string(),
-                Some(payer_account_id),
-            )
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_unused_gas_weight(1)
-                    .on_email_verification_private_result(caller),
-            )
+        tee_verify::request_email_verification_private_inner(
+            self,
+            payer_account_id,
+            encrypted_email_blob,
+            params,
+        )
     }
 
     #[private]
@@ -332,148 +225,7 @@ impl EmailDkimVerifier {
         email_blob: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult {
-        let _ = requested_by;
-        let subject = extract_header_value(&email_blob, "Subject");
-        let request_id = subject.as_deref().and_then(parse_recover_request_id);
-
-        let value = match result {
-            Ok(Some(v)) => v,
-            _ => {
-                let vr = VerificationResult {
-                    verified: false,
-                    account_id: String::new(),
-                    new_public_key: String::new(),
-                    from_address: String::new(),
-                    email_timestamp_ms: None,
-                };
-                self.store_verification_result_if_needed(&request_id, &vr);
-                return vr;
-            }
-        };
-
-        let worker_response: WorkerResponse = match serde_json::from_value(value.clone()) {
-            Ok(r) => r,
-            Err(e) => {
-                env::log_str(&format!("Failed to parse worker response: {e}"));
-                let vr = VerificationResult {
-                    verified: false,
-                    account_id: String::new(),
-                    new_public_key: String::new(),
-                    from_address: String::new(),
-                    email_timestamp_ms: None,
-                };
-                self.store_verification_result_if_needed(&request_id, &vr);
-                return vr;
-            }
-        };
-
-        if worker_response.method != "get-dns-records"
-            && worker_response.method != "dnsLookup"
-            && worker_response.method != "request_email_dns_records"
-        {
-            env::log_str(&format!(
-                "Unexpected worker method in on_email_verification_onchain_result: {}",
-                worker_response.method
-            ));
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-            };
-            self.store_verification_result_if_needed(&request_id, &vr);
-            return vr;
-        }
-
-        let dns_params: DnsLookupParams = match serde_json::from_value(worker_response.params.clone()) {
-                Ok(p) => p,
-                Err(e) => {
-                    env::log_str(&format!("Failed to parse get-dns-records params: {e}"));
-                    let vr = VerificationResult {
-                        verified: false,
-                        account_id: String::new(),
-                        new_public_key: String::new(),
-                        from_address: String::new(),
-                        email_timestamp_ms: None,
-                    };
-                    self.store_verification_result_if_needed(&request_id, &vr);
-                    return vr;
-                }
-            };
-
-        if let Some(err) = dns_params.error.as_deref() {
-            env::log_str(&format!("DKIM DNS fetch error: {err}"));
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-            };
-            self.store_verification_result_if_needed(&request_id, &vr);
-            return vr;
-        }
-
-        let record_strings = dns_params.records;
-
-        if record_strings.is_empty() {
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-            };
-            self.store_verification_result_if_needed(&request_id, &vr);
-            return vr;
-        }
-
-        let verified = verify_dkim(&email_blob, &record_strings);
-
-        if !verified {
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-            };
-            self.store_verification_result_if_needed(&request_id, &vr);
-            return vr;
-        }
-
-        let subject = extract_header_value(&email_blob, "Subject");
-
-        // Primary: parse both account_id and key from the Subject line.
-        // Fallback: legacy format with account_id in Subject and key in body.
-        let (account_id, new_public_key) = if let Some(s) = subject.as_deref() {
-            if let Some((acc, pk)) = parse_recover_instruction(s) {
-                (acc.to_string(), pk)
-            } else {
-                let acc = parse_recover_subject(s)
-                    .map(|a| a.to_string())
-                    .unwrap_or_default();
-                let pk = parse_recover_public_key_from_body(&email_blob).unwrap_or_default();
-                (acc, pk)
-            }
-        } else {
-            let pk = parse_recover_public_key_from_body(&email_blob).unwrap_or_default();
-            (String::new(), pk)
-        };
-
-        let from_address = parse_from_address(&email_blob);
-        let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
-
-        let vr = VerificationResult {
-            verified: true,
-            account_id,
-            new_public_key,
-            from_address,
-            email_timestamp_ms,
-        };
-        self.store_verification_result_if_needed(&request_id, &vr);
-        vr
+        onchain_verify::on_email_verification_onchain_result(self, requested_by, email_blob, result)
     }
 
     #[private]
@@ -482,85 +234,29 @@ impl EmailDkimVerifier {
         requested_by: AccountId,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult {
-        let _ = requested_by;
-        let value = match result {
-            Ok(Some(v)) => v,
-            _ => {
-                let vr = VerificationResult {
-                    verified: false,
-                    account_id: String::new(),
-                    new_public_key: String::new(),
-                    from_address: String::new(),
-                    email_timestamp_ms: None,
-                };
-                // No request_id available in the current private flow.
-                return vr;
-            }
+        tee_verify::on_email_verification_private_result(self, requested_by, result)
+    }
+
+    /// Private test-only helper used from near-workspaces integration tests.
+    ///
+    /// Stores a dummy `VerificationResult` for the given `request_id` and
+    /// schedules automatic cleanup via `promise_yield_create`, exercising the
+    /// same path as real Outlayer callbacks.
+    #[private]
+    pub fn test_store_verification_result_with_yield(&mut self, request_id: String) {
+        let vr = VerificationResult {
+            verified: false,
+            account_id: String::new(),
+            new_public_key: String::new(),
+            from_address: String::new(),
+            email_timestamp_ms: None,
         };
-
-        let worker_response: WorkerResponse = match serde_json::from_value(value.clone()) {
-            Ok(r) => r,
-            Err(e) => {
-                env::log_str(&format!(
-                    "Failed to parse worker response (private): {e}"
-                ));
-                let vr = VerificationResult {
-                    verified: false,
-                    account_id: String::new(),
-                    new_public_key: String::new(),
-                    from_address: String::new(),
-                    email_timestamp_ms: None,
-                };
-                return vr;
-            }
+        let request_id_opt = if request_id.is_empty() {
+            None
+        } else {
+            Some(request_id)
         };
-
-        if worker_response.method != VERIFY_ENCRYPTED_EMAIL_METHOD {
-            env::log_str(&format!(
-                "Unexpected worker method in on_email_verification_private_result: {}",
-                worker_response.method
-            ));
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-            };
-            return vr;
-        }
-
-        let verify_params: VerifyParams =
-            match serde_json::from_value(worker_response.params.clone()) {
-            Ok(p) => p,
-            Err(e) => {
-                env::log_str(&format!(
-                    "Failed to parse verify-encrypted-email params: {e}"
-                ));
-                let vr = VerificationResult {
-                    verified: false,
-                    account_id: String::new(),
-                    new_public_key: String::new(),
-                    from_address: String::new(),
-                    email_timestamp_ms: None,
-                };
-                return vr;
-            }
-        };
-
-        if let Some(err) = verify_params.error.as_deref() {
-            env::log_str(&format!(
-                "verify-encrypted-email worker error: {err}"
-            ));
-        }
-
-        VerificationResult {
-            verified: verify_params.verified,
-            account_id: verify_params.account_id,
-            new_public_key: verify_params.new_public_key,
-            from_address: verify_params.from_address,
-            email_timestamp_ms: verify_params.email_timestamp_ms,
-        }
+        self.store_verification_result_if_needed(&request_id_opt, &vr);
     }
 
     #[private]
@@ -573,11 +269,6 @@ impl Default for EmailDkimVerifier {
     fn default() -> Self {
         env::panic_str("Contract is not initialized");
     }
-}
-
-fn is_expired(created_at_ms: u64, ttl_ms: u64) -> bool {
-    let now_ms = env::block_timestamp() / 1_000_000;
-    now_ms.saturating_sub(created_at_ms) > ttl_ms
 }
 
 impl EmailDkimVerifier {
@@ -597,6 +288,45 @@ impl EmailDkimVerifier {
             result: result.clone(),
             created_at_ms: env::block_timestamp() / 1_000_000,
         };
-        self.verification_results_by_request_id.insert(id, &entry);
+        self.verification_results_by_request_id
+            .insert(id.clone(), entry);
+
+        // Schedule automatic cleanup via yield-resume after ~200 blocks.
+        // The runtime will invoke clear_verification_result(request_id) later,
+        // so the entry remains available for polling until then.
+        let args = serde_json::to_vec(&json!({ "request_id": id })).unwrap_or_default();
+        // We don't need the data_id, so we use a dummy register index (0) and ignore its contents.
+        env::promise_yield_create(
+            "clear_verification_result",
+            &args,
+            Gas::from_tgas(8),
+            GasWeight(0),
+            0,
+        );
+    }
+}
+
+/// Helper for inserting a verification result without scheduling a yield promise.
+/// Used by tests; not exported as a NEAR method because it lives outside
+/// the #[near] impl block.
+impl EmailDkimVerifier {
+    pub fn store_verification_result_for_testing(
+        &mut self,
+        request_id: &Option<String>,
+        result: &VerificationResult,
+    ) {
+        let Some(id) = request_id else {
+            return;
+        };
+        if id.is_empty() {
+            return;
+        }
+
+        let entry = StoredVerificationResult {
+            result: result.clone(),
+            created_at_ms: env::block_timestamp() / 1_000_000,
+        };
+        self.verification_results_by_request_id
+            .insert(id.clone(), entry);
     }
 }

@@ -35,7 +35,7 @@ fn verify_encrypted_dkim_flow_fails_without_secret() {
 fn encrypted_flow_runs_dkim_verification_in_worker() {
     let email_blob = include_str!("../../email-dkim-verifier-contract/tests/data/gmail_reset_full.eml");
     let context = serde_json::json!({
-        "account_id": "berp61.w3a-v1.testnet",
+        "account_id": "kerp30.w3a-v1.testnet",
         "network_id": "testnet"
     });
 
@@ -71,7 +71,7 @@ fn encrypted_flow_runs_dkim_verification_in_worker() {
         .get("account_id")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
-    assert_eq!(account_id, "berp61.w3a-v1.testnet");
+    assert_eq!(account_id, "kerp30.w3a-v1.testnet");
 
     let new_public_key = response
         .params
@@ -80,7 +80,7 @@ fn encrypted_flow_runs_dkim_verification_in_worker() {
         .unwrap_or_default();
     assert_eq!(
         new_public_key,
-        "ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy"
+        "ed25519:86mqiBdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFweigm"
     );
 
     let from_address = response
@@ -107,12 +107,12 @@ fn encrypted_flow_runs_dkim_verification_in_worker() {
 fn encrypted_flow_fails_for_tampered_public_key() {
     let email_blob = include_str!("../../email-dkim-verifier-contract/tests/data/gmail_reset_full.eml");
     let tampered = email_blob.replacen(
-        "ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy",
-        "ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEz",
+        "ed25519:86mqiBdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFweigm",
+        "ed25519:86mqiBdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFweign",
         1,
     );
     let context = serde_json::json!({
-        "account_id": "berp61.w3a-v1.testnet",
+        "account_id": "kerp30.w3a-v1.testnet",
         "network_id": "testnet"
     });
 

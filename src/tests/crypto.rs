@@ -60,7 +60,7 @@ pub(crate) fn encrypt_email(email_blob: &str, context: &serde_json::Value) -> En
 fn encrypted_email_decrypts_and_parses_fields() {
     let email_blob = include_str!("../../email-dkim-verifier-contract/tests/data/gmail_reset_full.eml");
     let context = serde_json::json!({
-        "account_id": "berp61.w3a-v1.testnet",
+        "account_id": "kerp30.w3a-v1.testnet",
         "network_id": "testnet"
     });
 
@@ -74,7 +74,7 @@ fn encrypted_email_decrypts_and_parses_fields() {
     let subject =
         extract_header_value(&decrypted, "Subject").expect("subject header");
     assert!(
-        subject.contains("berp61.w3a-v1.testnet"),
+        subject.contains("kerp30.w3a-v1.testnet"),
         "subject should mention the recovered account id"
     );
 

@@ -3,7 +3,7 @@ use crate::dns::fetch_txt_records;
 use crate::parsers::{
     extract_dkim_selector_and_domain, extract_header_value, parse_email_timestamp_ms,
     parse_from_address, parse_recover_instruction, parse_recover_public_key_from_body,
-    parse_recover_subject,
+    parse_recover_request_id, parse_recover_subject,
 };
 use crate::verify_dkim::verify_dkim;
 use serde::{Deserialize, Serialize};
@@ -163,6 +163,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
                     "new_public_key": "",
                     "from_address": "",
                     "email_timestamp_ms": null,
+                    "request_id": serde_json::Value::Null,
                     "error": format!("invalid {VERIFY_ENCRYPTED_EMAIL_METHOD} params: {e}"),
                 }),
             }
@@ -183,11 +184,15 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
                     "new_public_key": "",
                     "from_address": "",
                     "email_timestamp_ms": null,
+                    "request_id": serde_json::Value::Null,
                     "error": e,
                 }),
             }
         }
     };
+
+    let subject = extract_header_value(&decrypted_email, "Subject");
+    let request_id = subject.as_deref().and_then(parse_recover_request_id);
 
     let (selector, domain) = match extract_dkim_selector_and_domain(&decrypted_email) {
         Ok(v) => v,
@@ -200,6 +205,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
                     "new_public_key": "",
                     "from_address": "",
                     "email_timestamp_ms": Option::<u64>::None,
+                    "request_id": request_id,
                     "error": e,
                 }),
             }
@@ -218,6 +224,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
                     "new_public_key": "",
                     "from_address": "",
                     "email_timestamp_ms": Option::<u64>::None,
+                    "request_id": request_id,
                     "error": e,
                 }),
             }
@@ -233,6 +240,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
                 "new_public_key": "",
                 "from_address": "",
                 "email_timestamp_ms": Option::<u64>::None,
+                "request_id": request_id,
                 "error": "no DKIM DNS records found",
             }),
         };
@@ -249,12 +257,12 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
                 "new_public_key": "",
                 "from_address": "",
                 "email_timestamp_ms": Option::<u64>::None,
+                "request_id": request_id,
                 "error": "DKIM verification failed",
             }),
         };
     }
 
-    let subject = extract_header_value(&decrypted_email, "Subject");
     let (account_id, new_public_key) = if let Some(s) = subject.as_deref() {
         if let Some((acc, pk)) = parse_recover_instruction(s) {
             (acc, pk)
@@ -279,7 +287,9 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
             "new_public_key": new_public_key,
             "from_address": from_address,
             "email_timestamp_ms": email_timestamp_ms,
+            "request_id": request_id,
             "error": serde_json::Value::Null,
         }),
     }
 }
+

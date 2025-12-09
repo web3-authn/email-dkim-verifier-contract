@@ -38,11 +38,8 @@ pub fn parse_recover_subject(subject: &str) -> Option<AccountId> {
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    let account_id_str = if kind == "recover" {
-        // Legacy format: "recover <account_id> ..."
-        parts.next()?
-    } else if let Some(rest) = kind.strip_prefix("recover-") {
-        // New format: "recover-<REQUEST_ID> <account_id> ..."
+    let account_id_str = if let Some(rest) = kind.strip_prefix("recover-") {
+        // New format: "recover-<request_id> <account_id> ..."
         // Skip the request_id token; next token must be account_id.
         let _request_id = rest;
         parts.next()?
@@ -61,16 +58,13 @@ pub fn parse_recover_subject(subject: &str) -> Option<AccountId> {
 /// Parse both account_id and public key from a recovery Subject header.
 ///
 /// Expected primary format:
-///   "recover <account_id> ed25519:<public_key>"
+///   "recover-<request_id> <account_id> ed25519:<public_key>"
 pub fn parse_recover_instruction(subject: &str) -> Option<(AccountId, String)> {
     let subject = subject.trim();
     let mut parts = subject.split_whitespace();
 
     let kind = parts.next()?;
-    let account_id_str = if kind == "recover" {
-        // Legacy format.
-        parts.next()?
-    } else if let Some(rest) = kind.strip_prefix("recover-") {
+    let account_id_str = if let Some(rest) = kind.strip_prefix("recover-") {
         // New format with request_id in the first token.
         let _request_id = rest;
         parts.next()?
@@ -99,8 +93,8 @@ pub fn parse_recover_instruction(subject: &str) -> Option<(AccountId, String)> {
 /// Parse the short request_id from a recovery Subject header.
 ///
 /// Expected format:
-///   "recover-<REQUEST_ID> <account_id> ed25519:<public_key>"
-/// Returns Some("<REQUEST_ID>") when the prefix is present; otherwise None.
+///   "recover-<request_id> <account_id> ed25519:<public_key>"
+/// Returns Some("<request_id>") when the prefix is present; otherwise None.
 pub fn parse_recover_request_id(subject: &str) -> Option<String> {
     let subject = subject.trim();
     let mut parts = subject.split_whitespace();
@@ -292,13 +286,6 @@ pub fn canonicalize_body_relaxed(body: &str) -> String {
     let mut result = lines.join("\r\n");
     result.push_str("\r\n");
     result
-}
-
-pub fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
-    headers
-        .iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case("DKIM-Signature"))
-        .map(|(_, v)| v.clone())
 }
 
 pub fn parse_email_timestamp_ms(email: &str) -> Option<u64> {
@@ -553,6 +540,13 @@ mod tests {
     use rsa::sha2::{Digest, Sha256};
     use rsa::RsaPublicKey;
 
+    pub fn parse_dkim_header(headers: &[(String, String)]) -> Option<String> {
+        headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("DKIM-Signature"))
+            .map(|(_, v)| v.clone())
+    }
+
     #[test]
     fn real_gmail_full_message_body_hash_matches_bh() {
         let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
@@ -592,7 +586,7 @@ mod tests {
 
     #[test]
     fn parse_recover_subject_and_body_key() {
-        let subject = "recover alice.testnet ed25519:NEW_PUBLIC_KEY";
+        let subject = "recover-REQ123 alice.testnet ed25519:NEW_PUBLIC_KEY";
 
         let (account_id, key_from_subject) =
             parse_recover_instruction(subject).expect("instruction");
@@ -600,7 +594,7 @@ mod tests {
         assert_eq!(key_from_subject, "ed25519:NEW_PUBLIC_KEY");
 
         let email = "From: alice@example.com\n\
-Subject: recover alice.testnet ed25519:NEW_PUBLIC_KEY\n\
+Subject: recover-REQ123 alice.testnet ed25519:NEW_PUBLIC_KEY\n\
 \n\
 ed25519:NEW_PUBLIC_KEY\n";
         let key_from_body = parse_recover_public_key_from_body(email).expect("key");

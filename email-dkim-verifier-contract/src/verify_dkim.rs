@@ -201,8 +201,8 @@ mod tests {
     fn modifying_subject_breaks_dkim() {
         let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
         let modified = email_blob.replacen(
-            "Subject: recover berp61.w3a-v1.testnet",
-            "Subject: recover alice.testnet",
+            "Subject: recover-123abc kerp30.w3a-v1.testnet ed25519:86mqiBdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFweigm",
+            "Subject: recover-123abc kerp30.w3a-v1.testnet ed25519:88888Bdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFggggg",
             1,
         );
         assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
@@ -211,10 +211,10 @@ mod tests {
     #[test]
     fn modifying_body_plain_text_breaks_dkim() {
         let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
-        // Change the plain-text body content.
+        // Change the html body content.
         let modified = email_blob.replacen(
-            "HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy",
-            "HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEz",
+            "<div dir=\"ltr\"><br></div>",
+            "<div dir=\"ltr\">modified</div>",
             1,
         );
         assert!(!verify_dkim(&modified, &real_gmail_dns_records()));
