@@ -11,6 +11,7 @@ pub(crate) fn setup_worker_static_secret() -> StaticSecret {
     // Use a fixed hex seed so tests are deterministic.
     let seed_hex = "07".repeat(32); // 32 bytes of 0x07 as hex
     std::env::set_var("PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32", seed_hex);
+    std::env::set_var("OUTLAYER_WORKER_SK_SEED_HEX32", "07".repeat(32));
 
     // Derive the same StaticSecret as the worker would.
     load_worker_static_secret().expect("worker static secret to load from seed")

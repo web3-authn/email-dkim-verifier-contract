@@ -32,7 +32,6 @@ pub fn get_worker_public_key() -> Result<String, String> {
 pub(crate) fn load_worker_static_secret() -> Result<StaticSecret, String> {
 
     // Primary source: protected secret, hex-encoded 32-byte seed.
-
     // if let Ok(val) = std::env::var("PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32") {
     //     let seed = parse_hex_32(&val).map_err(|_| {
     //         "PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32 must be a 64-char hex string (32 bytes)"
