@@ -21,6 +21,7 @@ jobs:
       - name: Build contract (WASM)
         run: |
           cd email-dkim-verifier-contract
+          rustup target add wasm32-unknown-unknown --toolchain 1.85.0
           cargo build --target wasm32-unknown-unknown --release
 
       - name: Run workspace tests

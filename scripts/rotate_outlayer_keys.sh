@@ -21,50 +21,22 @@ source .env
 : "${DEPLOYER_PUBLIC_KEY:?Set DEPLOYER_PUBLIC_KEY in .env to the contract's signer public key}"
 : "${DEPLOYER_PRIVATE_KEY:?Set DEPLOYER_PRIVATE_KEY in .env to the contract's signer private key}"
 
-echo "Generating new X25519 worker keypair..."
-KEY_OUTPUT="$(cargo run --quiet --bin generate_x25519_keypair)"
-echo "$KEY_OUTPUT"
-
-# Expect lines:
-# OUTLAYER_WORKER_SK_B64=...
-# OUTLAYER_WORKER_PK_B64=...
-eval "$KEY_OUTPUT"
-
-if [[ -z "${OUTLAYER_WORKER_SK_B64:-}" || -z "${OUTLAYER_WORKER_PK_B64:-}" ]]; then
-  echo "Failed to parse generated keypair."
-  exit 1
-fi
-
-echo
-echo
-echo "======================================================"
-echo "=== ACTION REQUIRED: Update Outlayer worker secret ==="
-echo "======================================================"
-echo
-echo "1) Set the Outlayer worker secret/env variable:"
-echo
-printf '"PROTECTED_OUTLAYER_WORKER_SK_SEED_B64": "%s"\n' "${OUTLAYER_WORKER_SK_B64}"
-echo
-echo "in the Outlayer secrets page:"
-echo "  https://outlayer.fastnear.com/secrets"
+echo "This script triggers the contract to refresh its public key from the Outlayer worker."
+echo "Ensure you have updated the PROTECTED_OUTLAYER_WORKER_SK_SEED_B64 in the Outlayer secrets if needed."
 echo
 echo "Repository (for reference):"
 echo "  https://github.com/web3-authn/email-dkim-verifier-contract"
 echo
 echo
 
-read -p "Press enter after the worker has been updated and restarted, or Ctrl+C to abort..." _
+read -p "Press enter to trigger key refresh on the contract..." _
 
 echo "Updating contract public key via set_outlayer_encryption_public_key..."
 
-JSON_ARGS=$(jq -n \
-  --arg public_key "$OUTLAYER_WORKER_PK_B64" \
-  '{public_key: $public_key}')
-
 near contract call-function as-transaction "$CONTRACT_ID" set_outlayer_encryption_public_key \
-  json-args "$JSON_ARGS" \
+  json-args {} \
   prepaid-gas '100.0 Tgas' \
-  attached-deposit '0 NEAR' \
+  attached-deposit '0.05 NEAR' \
   sign-as "$CONTRACT_ID" \
   network-config "$NEAR_NETWORK_ID" \
   sign-with-plaintext-private-key "$DEPLOYER_PRIVATE_KEY" \

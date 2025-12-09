@@ -37,12 +37,12 @@ The contract stores the worker’s public encryption key:
   - `EmailDkimVerifier { outlayer_encryption_public_key: String, ... }`
 - Methods:
   - `get_outlayer_encryption_public_key() -> String`
-  - `set_outlayer_encryption_public_key(public_key: String)` (owner‑only)
+  - `set_outlayer_encryption_public_key()` (owner‑only, triggers worker fetch)
 
 Typical flow:
 
 1. Off‑chain script calls the worker’s `get-public-key`.
-2. Script calls `set_outlayer_encryption_public_key(public_key)` on the contract.
+2. Script calls `set_outlayer_encryption_public_key()` on the contract.
 3. Relayers read `get_outlayer_encryption_public_key()` and encrypt new emails to that key.
 
 This keeps the contract simple and avoids on‑chain key derivation.
@@ -58,7 +58,7 @@ To rotate the worker keypair:
 
 2. **Refresh the contract’s public key**
    - Call worker `get-public-key` again to fetch the new `public_key`.
-   - Call `set_outlayer_encryption_public_key(public_key)` on the contract.
+   - Call `set_outlayer_encryption_public_key()` on the contract (requires 0.01 NEAR for callback).
 
 This setup gives you a TEE‑protected root secret, a derived X25519 worker key, and a clear, minimal contract surface for publishing the worker’s public key.
 
