@@ -4,7 +4,7 @@ use crate::parsers::{
 };
 use crate::{
     ext_outlayer, ext_self, EmailDkimVerifier, VerificationResult,
-    WorkerResponse, MIN_DEPOSIT, OUTLAYER_CONTRACT_ID,
+    WorkerResponse, MIN_DEPOSIT, OUTLAYER_CONTRACT_ID, OUTLAYER_WORKER_COMMIT,
 };
 use near_sdk::serde_json::{self, json};
 use near_sdk::{env, AccountId, NearToken, Promise, PromiseError};
@@ -62,7 +62,7 @@ pub fn request_email_verification_onchain_inner(
     let code_source = json!({
         "GitHub": {
             "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
-            "commit": "13f99e811147c000d48269a72bb0ecf6a0bd3de0",
+            "commit": OUTLAYER_WORKER_COMMIT,
             "build_target": "wasm32-wasip2"
         }
     });
