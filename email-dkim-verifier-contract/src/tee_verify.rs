@@ -22,12 +22,23 @@ struct VerifyEncryptedEmailResponse {
     error: Option<String>,
 }
 
+/// Context forwarded as AEAD associated data to the Outlayer worker
+/// by the EmailDKIMVerifier contract. This is used when decrypting
+/// the encrypted email blob.
+#[near_sdk::near(serializers = [json, borsh])]
+#[derive(Clone)]
+pub struct AeadContext {
+    pub account_id: String,
+    pub network_id: String,
+    pub payer_account_id: String,
+}
+
 /// Internal helper: encrypted/TEE DKIM verification request path.
 pub fn request_email_verification_private_inner(
     _contract: &mut EmailDkimVerifier,
     payer_account_id: AccountId,
     encrypted_email_blob: serde_json::Value,
-    aead_context: Option<serde_json::Value>,
+    aead_context: AeadContext,
 ) -> Promise {
     let caller = env::predecessor_account_id();
     let attached = env::attached_deposit().as_yoctonear();
@@ -56,7 +67,12 @@ pub fn request_email_verification_private_inner(
         VERIFY_ENCRYPTED_EMAIL_METHOD,
         serde_json::json!({
             "encrypted_email_blob": encrypted_email_blob,
-            "context": aead_context.unwrap_or_else(|| serde_json::json!({})),
+            "context": json!({
+                // alphabetized
+                "account_id": aead_context.account_id,
+                "network_id": aead_context.network_id,
+                "payer_account_id": aead_context.payer_account_id,
+            })
         }),
     );
     let input_payload = input_args.to_json_string();

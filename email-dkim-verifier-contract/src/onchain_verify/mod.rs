@@ -35,7 +35,6 @@ pub fn request_email_verification_onchain_inner(
     _contract: &mut EmailDkimVerifier,
     payer_account_id: AccountId,
     email_blob: String,
-    context: Option<serde_json::Value>,
 ) -> Promise {
     let caller = env::predecessor_account_id();
     let attached = env::attached_deposit().as_yoctonear();
@@ -59,8 +58,7 @@ pub fn request_email_verification_onchain_inner(
         GET_DNS_RECORDS_METHOD,
         serde_json::json!({
             "email_blob": email_blob,
-            // context forwarded as `context` to the worker.
-            "context": context.unwrap_or_else(|| serde_json::json!({})),
+            "context": serde_json::json!({}), // no context needed
         }),
     );
     let input_payload = input_args.to_json_string();

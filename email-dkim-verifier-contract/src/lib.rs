@@ -10,6 +10,7 @@ use near_sdk::{
     PromiseError,
 };
 use schemars::JsonSchema;
+use tee_verify::AeadContext;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 // Git commit hash of the Outlayer WASI worker to execute.
@@ -283,51 +284,49 @@ impl EmailDkimVerifier {
             .map(|stored| stored.result.clone())
     }
 
-    /// Unified entrypoint for email DKIM verification.
-    ///
     /// @params
-    /// - `payer_account_id`: Account that pays for the Outlayer execution (typically the relayer).
-    /// - `email_blob`: Plaintext raw RFC‑5322 email; set only for on‑chain DKIM verification.
-    /// - `encrypted_email_blob`: Encrypted email envelope; set only for TEE‑private DKIM verification.
-    /// - `context`: JSON context forwarded to the worker (used as AEAD AAD in encrypted mode).
-    ///   In the encrypted path, this is alphbetized:
-    ///   `{ "account_id": "...", "network_id": "...", "payer_account_id": "..." }`
-    ///   and is serialized to JSON, then used as ChaCha20‑Poly1305 associated (binded) data.
+    /// - `payer_account_id`: Account that pays for the Outlayer execution.
+    /// - `encrypted_email_blob`: encrypted email envelope.
+    /// - `aead_context`:
+    ///   - forwarded to the worker (used for ChaCha20-Poly1305 AEAD AAD in decrypting email).
+    ///   - context fields must follow alphabetization:
+    ///     { "account_id": "...", "network_id": "...", "payer_account_id": "..." }`
     ///
     /// @returns
     /// - A `Promise` that resolves to `VerificationResult`
     #[payable]
-    pub fn request_email_verification(
+    pub fn request_email_verification_private(
         &mut self,
         payer_account_id: AccountId,
-        email_blob: Option<String>,
-        encrypted_email_blob: Option<serde_json::Value>,
-        context: Option<serde_json::Value>,
+        encrypted_email_blob: serde_json::Value,
+        aead_context: AeadContext,
     ) -> Promise {
-        match (email_blob, encrypted_email_blob) {
-            (Some(email_blob_plain), None) => {
-                onchain_verify::request_email_verification_onchain_inner(
-                    self,
-                    payer_account_id,
-                    email_blob_plain,
-                    context,
-                )
-            },
-            (None, Some(enc_email_blob)) => {
-                tee_verify::request_email_verification_private_inner(
-                    self,
-                    payer_account_id,
-                    enc_email_blob,
-                    context,
-                )
-            }
-            (Some(_), Some(_)) => {
-                env::panic_str("provide either email_blob or encrypted_email_blob, not both")
-            }
-            (None, None) => {
-                env::panic_str("either email_blob or encrypted_email_blob must be provided")
-            }
-        }
+        tee_verify::request_email_verification_private_inner(
+            self,
+            payer_account_id,
+            encrypted_email_blob,
+            aead_context,
+        )
+    }
+
+    /// @deprecated Public Onchain Email DKIM verifier.
+    /// User for legacy testing purposes.
+    /// @params
+    /// - `payer_account_id`: Account that pays for the Outlayer execution.
+    /// - `email_blob`: Plaintext RFC‑5322 email: for on‑chain DKIM verification.
+    /// @returns
+    /// - A `Promise` that resolves to `VerificationResult`
+    #[payable]
+    pub fn request_email_verification_onchain(
+        &mut self,
+        payer_account_id: AccountId,
+        email_blob: String,
+    ) -> Promise {
+        onchain_verify::request_email_verification_onchain_inner(
+            self,
+            payer_account_id,
+            email_blob_plain,
+        )
     }
 
     fn store_verification_result(&mut self, request_id: &str, result: &VerificationResult) {
