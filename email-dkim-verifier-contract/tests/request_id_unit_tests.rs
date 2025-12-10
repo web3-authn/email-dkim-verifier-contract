@@ -22,14 +22,14 @@ fn get_verification_result_returns_stored_entry_for_request_id() {
     let vr = VerificationResult {
         verified: true,
         account_id: "alice.testnet".to_string(),
-        new_public_key:
-            "ed25519:111111111111111111111111111111111111111111111111111111111111".to_string(),
+        new_public_key: "ed25519:111111111111111111111111111111111111111111111111111111111111"
+            .to_string(),
         from_address: "alice@example.com".to_string(),
         email_timestamp_ms: Some(0),
+        request_id: "123ABC".to_string(),
     };
 
-    let request_id = Some("123ABC".to_string());
-    contract.store_verification_result_for_testing(&request_id, &vr);
+    contract.store_verification_result_for_testing("123ABC", &vr);
 
     let fetched = contract
         .get_verification_result("123ABC".to_string())

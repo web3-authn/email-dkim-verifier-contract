@@ -1,6 +1,8 @@
 use crate::{
-    ext_outlayer, ext_self, EmailDkimVerifier, ExecutionParams,
-    VerificationResult, VerifyParams, WorkerResponse, MIN_DEPOSIT_3, OUTLAYER_CONTRACT_ID,
+    ext_outlayer, ext_self,
+    EmailDkimVerifier, ExecutionParams, InputArgs,
+    VerificationResult, VerifyParams, WorkerResponse,
+    MIN_DEPOSIT, OUTLAYER_CONTRACT_ID,
     OUTLAYER_WORKER_COMMIT, VERIFY_ENCRYPTED_EMAIL_METHOD,
     SecretsReference, SECRETS_OWNER_ID, SECRETS_PROFILE,
 };
@@ -12,16 +14,16 @@ pub fn request_email_verification_private_inner(
     _contract: &mut EmailDkimVerifier,
     payer_account_id: AccountId,
     encrypted_email_blob: serde_json::Value,
-    params: Option<serde_json::Value>,
+    aead_context: Option<serde_json::Value>,
 ) -> Promise {
     let caller = env::predecessor_account_id();
     let attached = env::attached_deposit().as_yoctonear();
     assert!(
-        attached >= MIN_DEPOSIT_3,
+        attached >= MIN_DEPOSIT,
         "Attach at least 0.01 NEAR for Outlayer execution"
     );
 
-    let outlayer_deposit = MIN_DEPOSIT_3;
+    let outlayer_deposit = MIN_DEPOSIT;
     let refund = attached.saturating_sub(outlayer_deposit);
 
     if refund > 0 {
@@ -32,19 +34,23 @@ pub fn request_email_verification_private_inner(
         let _ = Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
     }
 
-    let input_payload = json!({
-        "method": VERIFY_ENCRYPTED_EMAIL_METHOD,
-        "params": {
+    // The `context` is forwarded to the worker under the `context` key.
+    // The worker uses this JSON object as AEAD AAD for ChaCha20‑Poly1305
+    // after serializing it with serde_json.
+    // Expected keys (alphabetical for canonical AAD):
+    //   account_id, network_id, payer_account_id.
+    let input_args = InputArgs::new(
+        VERIFY_ENCRYPTED_EMAIL_METHOD,
+        serde_json::json!({
             "encrypted_email_blob": encrypted_email_blob,
-            "context": params.unwrap_or_else(|| json!({})),
-        },
-    })
-    .to_string();
+            "context": aead_context.unwrap_or_else(|| serde_json::json!({})),
+        }),
+    );
+    let input_payload = input_args.to_json_string();
 
     let code_source = json!({
         "GitHub": {
             "repo": "github.com/web3-authn/email-dkim-verifier-contract",
-            "branch": "main",
             "commit": OUTLAYER_WORKER_COMMIT,
             "build_target": "wasm32-wasip2"
         }
@@ -102,6 +108,7 @@ pub fn on_email_verification_private_result(
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
+                request_id: String::new(),
             };
             return vr;
         }
@@ -110,15 +117,14 @@ pub fn on_email_verification_private_result(
     let worker_response: WorkerResponse = match serde_json::from_value(value.clone()) {
         Ok(r) => r,
         Err(e) => {
-            env::log_str(&format!(
-                "Failed to parse worker response (private): {e}"
-            ));
+            env::log_str(&format!("Failed to parse worker response (private): {e}"));
             let vr = VerificationResult {
                 verified: false,
                 account_id: String::new(),
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
+                request_id: String::new(),
             };
             return vr;
         }
@@ -135,32 +141,30 @@ pub fn on_email_verification_private_result(
             new_public_key: String::new(),
             from_address: String::new(),
             email_timestamp_ms: None,
+            request_id: String::new(),
         };
         return vr;
     }
 
     let verify_params: VerifyParams =
-        match serde_json::from_value(worker_response.params.clone()) {
+        match serde_json::from_value(worker_response.response.clone()) {
             Ok(p) => p,
             Err(e) => {
-                env::log_str(&format!(
-                    "Failed to parse verify-encrypted-email params: {e}"
-                ));
+                env::log_str(&format!("Failed to parse verify-encrypted-email response: {e}"));
                 let vr = VerificationResult {
                     verified: false,
                     account_id: String::new(),
                     new_public_key: String::new(),
                     from_address: String::new(),
                     email_timestamp_ms: None,
+                    request_id: String::new(),
                 };
                 return vr;
             }
         };
 
     if let Some(err) = verify_params.error.as_deref() {
-        env::log_str(&format!(
-            "verify-encrypted-email worker error: {err}"
-        ));
+        env::log_str(&format!("verify-encrypted-email worker error: {err}"));
     }
 
     let vr = VerificationResult {
@@ -169,6 +173,7 @@ pub fn on_email_verification_private_result(
         new_public_key: verify_params.new_public_key,
         from_address: verify_params.from_address,
         email_timestamp_ms: verify_params.email_timestamp_ms,
+        request_id: verify_params.request_id.clone(),
     };
     contract.store_verification_result_if_needed(&verify_params.request_id, &vr);
     vr

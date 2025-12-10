@@ -32,15 +32,15 @@ pub fn get_worker_public_key() -> Result<String, String> {
 pub(crate) fn load_worker_static_secret() -> Result<StaticSecret, String> {
 
     // Primary source: protected secret, hex-encoded 32-byte seed.
-    // if let Ok(val) = std::env::var("PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32") {
-    //     let seed = parse_hex_32(&val).map_err(|_| {
-    //         "PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32 must be a 64-char hex string (32 bytes)"
-    //             .to_string()
-    //     })?;
-    //     return derive_secret_key(seed);
-    // }
+    if let Ok(val) = std::env::var("PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32") {
+        let seed = parse_hex_32(&val).map_err(|_| {
+            "PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32 must be a 64-char hex string (32 bytes)"
+                .to_string()
+        })?;
+        return derive_secret_key(seed);
+    }
 
-    // Fallback: unprotected hex-encoded 32-byte seed
+    // Fallback: unprotected (trusted) hex-encoded 32-byte seed
     let val = std::env::var("OUTLAYER_WORKER_SK_SEED_HEX32").map_err(|_| {
         "Secrets Not Found: PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32 and OUTLAYER_WORKER_SK_SEED_HEX32"
             .to_string()
@@ -112,6 +112,10 @@ pub fn decrypt_encrypted_email(
     let ciphertext =
         base64::decode(envelope.ciphertext.trim()).map_err(|_| "invalid ciphertext".to_string())?;
 
+    // Serialize the logical `context` object as JSON and use the bytes as
+    // ChaCha20‑Poly1305 AAD. The SDK constructs `context` with keys in
+    // alphabetical order (`account_id`, `network_id`, `payer_account_id`)
+    // so that serde_json produces the same byte sequence on this side.
     let aad = serde_json::to_vec(context)
         .map_err(|_| "failed to serialize context for AAD".to_string())?;
 

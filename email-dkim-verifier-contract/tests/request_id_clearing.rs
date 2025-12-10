@@ -54,7 +54,7 @@ async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
             .gas(Gas::from_tgas(30))
             .transact().await
             // Note: We could also use `transact_async()` to fire-and-forget the transaction
-            // and await its result later, effectively avoiding the need for `tokio::join!`.
+            // instead of using `tokio::join!` later
     };
 
     // Task 2: Verify the initial state and trigger the yield resumption.
@@ -68,6 +68,12 @@ async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
                 .await?
                 .json()?;
             if fetched_now.is_some() {
+                let val = fetched_now.as_ref().unwrap();
+                if let Some(rid) = val.get("request_id") {
+                    assert_eq!(rid.as_str().unwrap(), "XYZ999");
+                } else {
+                    panic!("request_id field missing in VerificationResult");
+                }
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;

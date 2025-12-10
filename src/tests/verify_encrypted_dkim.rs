@@ -18,13 +18,13 @@ fn verify_encrypted_dkim_flow_fails_without_secret() {
 
     let request = RequestType {
         method: "verify-encrypted-email".to_string(),
-        params,
+        args: params,
     };
 
     let response = handle_request(request);
     assert_eq!(response.method, "verify-encrypted-email");
     let err = response
-        .params
+        .response
         .get("error")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
@@ -36,12 +36,13 @@ fn encrypted_flow_runs_dkim_verification_in_worker() {
     let email_blob = include_str!("../../email-dkim-verifier-contract/tests/data/gmail_reset_full.eml");
     let context = serde_json::json!({
         "account_id": "kerp30.w3a-v1.testnet",
-        "network_id": "testnet"
+        "network_id": "testnet",
+        "payer_account_id": "kerp30.w3a-v1.testnet"
     });
 
     let envelope = encrypt_email(email_blob, &context);
 
-    let params = serde_json::json!({
+    let args = serde_json::json!({
         "encrypted_email_blob": {
             "version": envelope.version,
             "ephemeral_pub": envelope.ephemeral_pub,
@@ -53,28 +54,28 @@ fn encrypted_flow_runs_dkim_verification_in_worker() {
 
     let request = RequestType {
         method: "verify-encrypted-email".to_string(),
-        params,
+        args: args,
     };
 
     let response = handle_request(request);
     assert_eq!(response.method, "verify-encrypted-email");
 
     let verified = response
-        .params
+        .response
         .get("verified")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     assert!(verified, "expected DKIM verification to succeed in worker");
 
     let account_id = response
-        .params
+        .response
         .get("account_id")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
     assert_eq!(account_id, "kerp30.w3a-v1.testnet");
 
     let new_public_key = response
-        .params
+        .response
         .get("new_public_key")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
@@ -84,20 +85,20 @@ fn encrypted_flow_runs_dkim_verification_in_worker() {
     );
 
     let from_address = response
-        .params
+        .response
         .get("from_address")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
     assert_eq!(from_address, "n6378056@gmail.com");
 
     let email_timestamp_ms = response
-        .params
+        .response
         .get("email_timestamp_ms")
         .and_then(|v| v.as_u64());
     assert!(email_timestamp_ms.is_some());
 
     let error = response
-        .params
+        .response
         .get("error")
         .and_then(|v| v.as_str());
     assert!(error.is_none(), "expected no error from worker");
@@ -130,48 +131,48 @@ fn encrypted_flow_fails_for_tampered_public_key() {
 
     let request = RequestType {
         method: "verify-encrypted-email".to_string(),
-        params,
+        args: params,
     };
 
     let response = handle_request(request);
     assert_eq!(response.method, "verify-encrypted-email");
 
     let verified = response
-        .params
+        .response
         .get("verified")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
     assert!(!verified, "expected DKIM verification to fail for tampered key");
 
     let account_id = response
-        .params
+        .response
         .get("account_id")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
     assert_eq!(account_id, "");
 
     let new_public_key = response
-        .params
+        .response
         .get("new_public_key")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
     assert_eq!(new_public_key, "");
 
     let from_address = response
-        .params
+        .response
         .get("from_address")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
     assert_eq!(from_address, "");
 
     let email_timestamp_ms = response
-        .params
+        .response
         .get("email_timestamp_ms")
         .and_then(|v| v.as_u64());
     assert!(email_timestamp_ms.is_none());
 
     let error = response
-        .params
+        .response
         .get("error")
         .and_then(|v| v.as_str())
         .unwrap_or_default();

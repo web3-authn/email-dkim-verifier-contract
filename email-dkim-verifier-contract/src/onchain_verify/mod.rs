@@ -1,12 +1,16 @@
-use crate::parsers::{
-    extract_header_value, parse_email_timestamp_ms, parse_from_address, parse_recover_instruction,
-    parse_recover_public_key_from_body, parse_recover_subject,
-};
 use crate::{
-    ext_outlayer, ext_self, EmailDkimVerifier, VerificationResult,
-    WorkerResponse, MIN_DEPOSIT_1, OUTLAYER_CONTRACT_ID, OUTLAYER_WORKER_COMMIT,
+    ext_outlayer, ext_self,
+    EmailDkimVerifier, InputArgs, VerificationResult,
+    WorkerResponse, MIN_DEPOSIT,
+    OUTLAYER_CONTRACT_ID, OUTLAYER_WORKER_COMMIT,
+    GET_DNS_RECORDS_METHOD,
     SecretsReference, SECRETS_OWNER_ID, SECRETS_PROFILE,
 };
+pub mod parsers;
+pub mod dkim;
+pub use parsers::parse_dkim_tags;
+
+use parsers::*;
 use near_sdk::serde_json::{self, json};
 use near_sdk::{env, AccountId, NearToken, Promise, PromiseError};
 
@@ -31,16 +35,16 @@ pub fn request_email_verification_onchain_inner(
     _contract: &mut EmailDkimVerifier,
     payer_account_id: AccountId,
     email_blob: String,
-    params: Option<serde_json::Value>,
+    context: Option<serde_json::Value>,
 ) -> Promise {
     let caller = env::predecessor_account_id();
     let attached = env::attached_deposit().as_yoctonear();
     assert!(
-        attached >= MIN_DEPOSIT_1,
+        attached >= MIN_DEPOSIT,
         "Attach at least 0.01 NEAR for Outlayer execution"
     );
 
-    let outlayer_deposit = MIN_DEPOSIT_1;
+    let outlayer_deposit = MIN_DEPOSIT;
     let refund = attached.saturating_sub(outlayer_deposit);
 
     if refund > 0 {
@@ -51,14 +55,15 @@ pub fn request_email_verification_onchain_inner(
         let _ = Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
     }
 
-    let input_payload = json!({
-        "method": "get-dns-records",
-        "params": {
+    let input_args = InputArgs::new(
+        GET_DNS_RECORDS_METHOD,
+        serde_json::json!({
             "email_blob": email_blob,
-            "params": params.unwrap_or_else(|| json!({})),
-        },
-    })
-    .to_string();
+            // context forwarded as `context` to the worker.
+            "context": context.unwrap_or_else(|| serde_json::json!({})),
+        }),
+    );
+    let input_payload = input_args.to_json_string();
 
     let code_source = json!({
         "GitHub": {
@@ -107,7 +112,9 @@ pub fn on_email_verification_onchain_result(
 ) -> VerificationResult {
     let _ = requested_by;
     let subject = extract_header_value(&email_blob, "Subject");
-    let request_id = subject.as_deref().and_then(crate::parsers::parse_recover_request_id);
+    let request_id = subject.as_deref()
+        .and_then(parsers::parse_recover_request_id)
+        .unwrap_or_default();
 
     let value = match result {
         Ok(Some(v)) => v,
@@ -118,6 +125,7 @@ pub fn on_email_verification_onchain_result(
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
+                request_id: String::new(),
             };
             contract.store_verification_result_if_needed(&request_id, &vr);
             return vr;
@@ -134,16 +142,14 @@ pub fn on_email_verification_onchain_result(
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
+                request_id: String::new(),
             };
             contract.store_verification_result_if_needed(&request_id, &vr);
             return vr;
         }
     };
 
-    if worker_response.method != "get-dns-records"
-        && worker_response.method != "dnsLookup"
-        && worker_response.method != "request_email_dns_records"
-    {
+    if worker_response.method != GET_DNS_RECORDS_METHOD {
         env::log_str(&format!(
             "Unexpected worker method in on_email_verification_onchain_result: {}",
             worker_response.method
@@ -154,22 +160,24 @@ pub fn on_email_verification_onchain_result(
             new_public_key: String::new(),
             from_address: String::new(),
             email_timestamp_ms: None,
+            request_id: String::new(),
         };
         contract.store_verification_result_if_needed(&request_id, &vr);
         return vr;
     }
 
     let dns_params: DnsLookupParams =
-        match serde_json::from_value(worker_response.params.clone()) {
+        match serde_json::from_value(worker_response.response.clone()) {
             Ok(p) => p,
             Err(e) => {
-                env::log_str(&format!("Failed to parse get-dns-records params: {e}"));
+                env::log_str(&format!("Failed to parse {GET_DNS_RECORDS_METHOD} response: {e}"));
                 let vr = VerificationResult {
                     verified: false,
                     account_id: String::new(),
                     new_public_key: String::new(),
                     from_address: String::new(),
                     email_timestamp_ms: None,
+                    request_id: String::new(),
                 };
                 contract.store_verification_result_if_needed(&request_id, &vr);
                 return vr;
@@ -184,6 +192,7 @@ pub fn on_email_verification_onchain_result(
             new_public_key: String::new(),
             from_address: String::new(),
             email_timestamp_ms: None,
+            request_id: String::new(),
         };
         contract.store_verification_result_if_needed(&request_id, &vr);
         return vr;
@@ -198,12 +207,13 @@ pub fn on_email_verification_onchain_result(
             new_public_key: String::new(),
             from_address: String::new(),
             email_timestamp_ms: None,
+            request_id: String::new(),
         };
         contract.store_verification_result_if_needed(&request_id, &vr);
         return vr;
     }
 
-    let verified = crate::verify_dkim(&email_blob, &record_strings);
+    let verified = dkim::verify_dkim(&email_blob, &record_strings);
 
     if !verified {
         let vr = VerificationResult {
@@ -212,6 +222,7 @@ pub fn on_email_verification_onchain_result(
             new_public_key: String::new(),
             from_address: String::new(),
             email_timestamp_ms: None,
+            request_id: String::new(),
         };
         contract.store_verification_result_if_needed(&request_id, &vr);
         return vr;
@@ -244,6 +255,7 @@ pub fn on_email_verification_onchain_result(
         new_public_key,
         from_address,
         email_timestamp_ms,
+        request_id: request_id.clone(),
     };
     contract.store_verification_result_if_needed(&request_id, &vr);
     vr

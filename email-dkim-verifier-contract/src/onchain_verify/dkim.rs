@@ -5,7 +5,7 @@ use rsa::sha2::{Digest, Sha256};
 use rsa::signature::hazmat::PrehashVerifier;
 use rsa::RsaPublicKey;
 
-use crate::parsers::{
+use super::parsers::{
     build_canonicalized_dkim_header_relaxed,
     canonicalize_body_relaxed,
     canonicalize_headers_relaxed,
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn modifying_subject_breaks_dkim() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        let email_blob = include_str!("../../tests/data/gmail_reset_full.eml");
         let modified = email_blob.replacen(
             "Subject: recover-123abc kerp30.w3a-v1.testnet ed25519:86mqiBdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFweigm",
             "Subject: recover-123abc kerp30.w3a-v1.testnet ed25519:88888Bdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFggggg",
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn modifying_body_plain_text_breaks_dkim() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        let email_blob = include_str!("../../tests/data/gmail_reset_full.eml");
         // Change the html body content.
         let modified = email_blob.replacen(
             "<div dir=\"ltr\"><br></div>",
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn modifying_from_breaks_dkim() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        let email_blob = include_str!("../../tests/data/gmail_reset_full.eml");
         let modified = email_blob.replacen(
             "From: Pta <n6378056@gmail.com>",
             "From: Mallory <mallory@example.com>",

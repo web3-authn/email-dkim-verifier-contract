@@ -1,4 +1,4 @@
-use email_dkim_verifier_contract::{parse_dkim_tags, verify_dkim};
+use email_dkim_verifier_contract::onchain_verify::{parse_dkim_tags, dkim::verify_dkim};
 use rsa::pkcs8::DecodePublicKey;
 use rsa::RsaPublicKey;
 

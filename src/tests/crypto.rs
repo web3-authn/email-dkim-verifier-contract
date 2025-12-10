@@ -63,7 +63,8 @@ fn encrypted_email_decrypts_and_parses_fields() {
     let email_blob = include_str!("../../email-dkim-verifier-contract/tests/data/gmail_reset_full.eml");
     let context = serde_json::json!({
         "account_id": "kerp30.w3a-v1.testnet",
-        "network_id": "testnet"
+        "network_id": "testnet",
+        "payer_account_id": "kerp30.w3a-v1.testnet",
     });
 
     let envelope = encrypt_email(email_blob, &context);

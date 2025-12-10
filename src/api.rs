@@ -9,9 +9,8 @@ use crate::verify_dkim::verify_dkim;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-// Method name for plaintext DNS lookup requests from the contract.
+// Method names
 const GET_DNS_RECORDS_METHOD: &str = "get-dns-records";
-// Method name for encrypted DKIM verification; must match the contract.
 const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
 const GET_PUBLIC_KEY_METHOD: &str = "get-public-key";
 
@@ -20,7 +19,7 @@ pub struct RequestType {
     /// Name of the operation to perform (e.g. "get-dns-records", "verify-encrypted-email").
     pub method: String,
     /// Arbitrary JSON payload interpreted based on `method`.
-    pub params: Value,
+    pub args: Value,
 }
 
 #[derive(Serialize)]
@@ -28,11 +27,35 @@ pub struct ResponseType {
     /// Mirrors the incoming `method`
     pub method: String,
     /// Method-specific response payload.
-    pub params: Value,
+    pub response: Value,
+}
+
+impl ResponseType {
+    /// Convenience helper for building `verify-encrypted-email` error responses with
+    /// a consistent shape.
+    fn error(
+        request_id: String,
+        error: impl Into<String>,
+        context: Option<Value>,
+    ) -> Self {
+        ResponseType {
+            method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
+            response: serde_json::json!({
+                "verified": false,
+                "account_id": "",
+                "new_public_key": "",
+                "from_address": "",
+                "email_timestamp_ms": Option::<u64>::None,
+                "request_id": request_id,
+                "error": error.into(),
+                "context": context.unwrap_or(Value::Null),
+            }),
+        }
+    }
 }
 
 #[derive(Deserialize)]
-struct DnsLookupParams {
+struct DnsLookupArgs {
     email_blob: Option<String>,
     name: Option<String>,
     #[serde(default = "default_record_type", rename = "type")]
@@ -52,12 +75,12 @@ struct DnsLookupResult {
 
 pub fn handle_request(request: RequestType) -> ResponseType {
     match request.method.as_str() {
-        GET_DNS_RECORDS_METHOD => handle_dns_lookup(request.params),
-        VERIFY_ENCRYPTED_EMAIL_METHOD => handle_verify_encrypted_dkim(request.params),
+        GET_DNS_RECORDS_METHOD => handle_dns_lookup(request.args),
+        VERIFY_ENCRYPTED_EMAIL_METHOD => handle_verify_encrypted_dkim(request.args),
         GET_PUBLIC_KEY_METHOD => handle_get_public_key(),
         other => ResponseType {
             method: other.to_string(),
-            params: serde_json::json!({
+            response: serde_json::json!({
                 "error": format!("unknown method: {other}"),
             }),
         },
@@ -68,19 +91,19 @@ fn default_record_type() -> String {
     "TXT".to_string()
 }
 
-fn handle_dns_lookup(params: Value) -> ResponseType {
-    let parsed: Result<DnsLookupParams, _> = serde_json::from_value(params);
-    let DnsLookupParams {
+fn handle_dns_lookup(args: Value) -> ResponseType {
+    let args_parsed: Result<DnsLookupArgs, _> = serde_json::from_value(args);
+    let DnsLookupArgs {
         email_blob,
         name,
         record_type,
-    } = match parsed {
+    } = match args_parsed {
         Ok(p) => p,
         Err(e) => {
             return ResponseType {
                 method: GET_DNS_RECORDS_METHOD.to_string(),
-                params: serde_json::json!({
-                    "error": format!("invalid {GET_DNS_RECORDS_METHOD} params: {e}"),
+                response: serde_json::json!({
+                    "error": format!("invalid {GET_DNS_RECORDS_METHOD} args: {e}"),
                     "records": Vec::<String>::new(),
                 }),
             }
@@ -141,77 +164,54 @@ fn handle_dns_lookup(params: Value) -> ResponseType {
 
     ResponseType {
         method: GET_DNS_RECORDS_METHOD.to_string(),
-        params: serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({})),
+        response: serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({})),
     }
 }
 
-fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
+fn handle_verify_encrypted_dkim(args: Value) -> ResponseType {
     #[derive(Deserialize)]
-    struct VerifyParams {
+    struct VerifyArgs {
         encrypted_email_blob: EncryptedEmailEnvelope,
         #[serde(default)]
-        context: Value,
+        context: Value, // forwarded directly from contract `args.context` as worker `context` (AEAD AAD)
     }
 
-    let parsed: Result<VerifyParams, _> = serde_json::from_value(params);
-    let verify_params = match parsed {
-        Ok(p) => p,
+    let args_parsed: Result<VerifyArgs, _> = serde_json::from_value(args);
+    let verify_args = match args_parsed {
+        Ok(a) => a,
         Err(e) => {
-            return ResponseType {
-                method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
-                params: serde_json::json!({
-                    "verified": false,
-                    "account_id": "",
-                    "new_public_key": "",
-                    "from_address": "",
-                    "email_timestamp_ms": null,
-                    "request_id": serde_json::Value::Null,
-                    "error": format!("invalid {VERIFY_ENCRYPTED_EMAIL_METHOD} params: {e}"),
-                }),
-            }
+            return ResponseType::error(
+                String::new(),
+                format!("invalid {VERIFY_ENCRYPTED_EMAIL_METHOD} args: {e}"),
+                None,
+            );
         }
     };
 
+    // Pass the JSON `context` object to crypto; it will be serialized with
+    // serde_json and used as ChaCha20‑Poly1305 AAD. The SDK constructs this
+    // context with keys in alphabetical order to match serde's canonical form.
     let decrypted_email = match decrypt_encrypted_email(
-        &verify_params.encrypted_email_blob,
-        &verify_params.context,
+        &verify_args.encrypted_email_blob,
+        &verify_args.context,
     ) {
         Ok(e) => e,
         Err(e) => {
-            return ResponseType {
-                method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
-                params: serde_json::json!({
-                    "verified": false,
-                    "account_id": "",
-                    "new_public_key": "",
-                    "from_address": "",
-                    "email_timestamp_ms": null,
-                    "request_id": serde_json::Value::Null,
-                    "error": e,
-                    "context": verify_params.context,
-                }),
-            }
+            return ResponseType::error(
+                String::new(),
+                e,
+                Some(verify_args.context),
+            );
         }
     };
 
     let subject = extract_header_value(&decrypted_email, "Subject");
-    let request_id = subject.as_deref().and_then(parse_recover_request_id);
+    let request_id = subject.as_deref().and_then(parse_recover_request_id).unwrap_or_default();
 
     let (selector, domain) = match extract_dkim_selector_and_domain(&decrypted_email) {
         Ok(v) => v,
         Err(e) => {
-            return ResponseType {
-                method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
-                params: serde_json::json!({
-                    "verified": false,
-                    "account_id": "",
-                    "new_public_key": "",
-                    "from_address": "",
-                    "email_timestamp_ms": Option::<u64>::None,
-                    "request_id": request_id,
-                    "error": e,
-                }),
-            }
+            return ResponseType::error(request_id, e, None);
         }
     };
 
@@ -219,51 +219,26 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
     let dns_records = match fetch_txt_records(&name) {
         Ok(records) => records,
         Err(e) => {
-            return ResponseType {
-                method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
-                params: serde_json::json!({
-                    "verified": false,
-                    "account_id": "",
-                    "new_public_key": "",
-                    "from_address": "",
-                    "email_timestamp_ms": Option::<u64>::None,
-                    "request_id": request_id,
-                    "error": e,
-                }),
-            }
+            return ResponseType::error(request_id, e, None);
         }
     };
 
     if dns_records.is_empty() {
-        return ResponseType {
-            method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
-            params: serde_json::json!({
-                "verified": false,
-                "account_id": "",
-                "new_public_key": "",
-                "from_address": "",
-                "email_timestamp_ms": Option::<u64>::None,
-                "request_id": request_id,
-                "error": "no DKIM DNS records found",
-            }),
-        };
+        return ResponseType::error(
+            request_id,
+            "no DKIM DNS records found",
+            None,
+        );
     }
 
     let verified = verify_dkim(&decrypted_email, &dns_records);
 
     if !verified {
-        return ResponseType {
-            method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
-            params: serde_json::json!({
-                "verified": false,
-                "account_id": "",
-                "new_public_key": "",
-                "from_address": "",
-                "email_timestamp_ms": Option::<u64>::None,
-                "request_id": request_id,
-                "error": "DKIM verification failed",
-            }),
-        };
+        return ResponseType::error(
+            request_id,
+            "DKIM verification failed",
+            None,
+        );
     }
 
     let (account_id, new_public_key) = if let Some(s) = subject.as_deref() {
@@ -284,7 +259,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
 
     ResponseType {
         method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
-        params: serde_json::json!({
+        response: serde_json::json!({
             "verified": true,
             "account_id": account_id,
             "new_public_key": new_public_key,
@@ -292,7 +267,7 @@ fn handle_verify_encrypted_dkim(params: Value) -> ResponseType {
             "email_timestamp_ms": email_timestamp_ms,
             "request_id": request_id,
             "error": serde_json::Value::Null,
-            "context": verify_params.context,
+            "context": verify_args.context,
         }),
     }
 }
@@ -301,11 +276,11 @@ fn handle_get_public_key() -> ResponseType {
     match get_worker_public_key() {
         Ok(pk) => ResponseType {
             method: GET_PUBLIC_KEY_METHOD.to_string(),
-            params: serde_json::json!({ "public_key": pk }),
+            response: serde_json::json!({ "public_key": pk }),
         },
         Err(e) => ResponseType {
             method: GET_PUBLIC_KEY_METHOD.to_string(),
-            params: serde_json::json!({ "error": e }),
+            response: serde_json::json!({ "error": e }),
         },
     }
 }

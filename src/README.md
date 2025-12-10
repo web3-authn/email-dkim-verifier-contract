@@ -23,7 +23,7 @@ The worker uses the following types (see `src/api.rs`):
   ```jsonc
   {
     "method": "get-dns-records" | "verify-encrypted-email",
-    "params": { /* method-specific JSON */ }
+    "args": { /* method-specific JSON */ }
   }
   ```
 
@@ -31,7 +31,7 @@ The worker uses the following types (see `src/api.rs`):
   ```jsonc
   {
     "method": "<same method name>",
-    "params": { /* method-specific JSON result */ }
+    "response": { /* method-specific JSON result */ }
   }
   ```
 
@@ -80,7 +80,7 @@ On parse/validation errors, the worker returns:
 ```jsonc
 {
   "method": "get-dns-records",
-  "params": {
+  "response": {
     "error": "invalid get-dns-records params: ...",
     "records": []
   }
@@ -146,7 +146,7 @@ From the repo root:
 
 - Run the worker binary natively (for debugging):
   ```bash
-  echo '{"method":"get-dns-records","params":{"email_blob":"..."}}' \
+  echo '{"method":"get-dns-records","args":{"email_blob":"..."}}' \
     | cargo run --quiet
   ```
 

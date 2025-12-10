@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn real_gmail_full_message_body_hash_matches_bh() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        let email_blob = include_str!("../../tests/data/gmail_reset_full.eml");
 
         let (raw_headers, body) = split_headers_body(email_blob);
         let headers = parse_headers(raw_headers);
@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn gmail_reset_full_email_timestamp_parses() {
-        let email_blob = include_str!("../tests/data/gmail_reset_full.eml");
+        let email_blob = include_str!("../../tests/data/gmail_reset_full.eml");
 
         let ts_ms = parse_email_timestamp_ms(email_blob);
         assert!(ts_ms.is_some(), "expected email timestamp to parse");

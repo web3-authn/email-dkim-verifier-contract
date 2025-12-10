@@ -1,7 +1,5 @@
-mod parsers;
-mod verify_dkim;
-mod onchain_verify;
-mod tee_verify;
+pub mod onchain_verify;
+pub mod tee_verify;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::store::IterableMap;
@@ -13,24 +11,21 @@ use near_sdk::{
 };
 use schemars::JsonSchema;
 
-pub use crate::parsers::parse_dkim_tags;
-pub use crate::verify_dkim::verify_dkim;
-
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
 // Git commit hash of the Outlayer WASI worker to execute.
 const OUTLAYER_WORKER_COMMIT: &str = "main";
 // Default public encryption key for the Outlayer worker (can be overridden via contract state).
 const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
-// Method name returned by the Outlayer worker for encrypted DKIM verification.
-const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
 // Minimum deposit forwarded to OutLayer (0.01 NEAR).
-// OutLayer currently requires XX yoctoNEAR
-pub const MIN_DEPOSIT_1: u128 = 10_000_000_000_000_000_000_000;
-pub const MIN_DEPOSIT_2: u128 = 10_000_000_000_000_000_000_000;
-pub const MIN_DEPOSIT_3: u128 = 10_000_000_000_000_000_000_000;
+pub const MIN_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 // Account which set the secrets in https://outlayer.fastnear.com/secrets
 pub const SECRETS_OWNER_ID: &str = "email-dkim-verifier-v1.testnet";
 pub const SECRETS_PROFILE: &str = "main";
+
+// Method names on Outlayer worker
+pub const GET_DNS_RECORDS_METHOD: &str = "get-dns-records";
+pub const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
+pub const GET_PUBLIC_KEY_METHOD: &str = "get-public-key";
 
 
 #[derive(BorshSerialize, BorshStorageKey)]
@@ -52,6 +47,7 @@ pub struct VerificationResult {
     pub new_public_key: String,
     pub from_address: String,
     pub email_timestamp_ms: Option<u64>,
+    pub request_id: String,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -96,7 +92,6 @@ struct ExecutionParams {
 /// ```
 ///
 /// is equivalent on chain to the CLI example from the OutLayer docs:
-///
 /// ```text
 /// near call outlayer.testnet request_execution '{
 ///   "code_source": { ... },
@@ -149,7 +144,31 @@ trait ExtEmailDkimVerifier {
 #[serde(crate = "near_sdk::serde")]
 struct WorkerResponse {
     method: String,
-    params: serde_json::Value,
+    response: serde_json::Value,
+}
+
+/// Payload sent to the Outlayer WASI worker over `stdin`.
+///
+/// This must match the worker's `RequestType` shape:
+/// `{ "method": "<name>", "args": { ... } }`.
+#[derive(near_sdk::serde::Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct InputArgs {
+    method: String,
+    args: serde_json::Value,
+}
+
+impl InputArgs {
+    pub fn new(method: impl Into<String>, args: serde_json::Value) -> Self {
+        Self {
+            method: method.into(),
+            args,
+        }
+    }
+
+    pub fn to_json_string(&self) -> String {
+        serde_json::to_string(self).expect("InputArgs must serialize to JSON")
+    }
 }
 
 #[derive(near_sdk::serde::Deserialize)]
@@ -161,7 +180,7 @@ struct VerifyParams {
     from_address: String,
     email_timestamp_ms: Option<u64>,
     #[serde(default)]
-    request_id: Option<String>,
+    request_id: String,
     error: Option<String>,
 }
 
@@ -197,15 +216,12 @@ impl EmailDkimVerifier {
 
         let attached = env::attached_deposit().as_yoctonear();
         assert!(
-            attached >= MIN_DEPOSIT_2,
-            "Attach at least 0.02 NEAR for Outlayer execution"
+            attached >= MIN_DEPOSIT,
+            "Attach at least 0.01 NEAR for Outlayer execution"
         );
 
-        let input_payload = serde_json::json!({
-            "method": "get-public-key",
-            "params": {}
-        })
-        .to_string();
+        let input_payload = InputArgs::new("get-public-key", serde_json::json!({}))
+            .to_json_string();
 
         let code_source = serde_json::json!({
             "GitHub": {
@@ -233,7 +249,7 @@ impl EmailDkimVerifier {
         };
 
         ext_outlayer::ext(OUTLAYER_CONTRACT_ID.parse().unwrap())
-            .with_attached_deposit(near_sdk::NearToken::from_yoctonear(MIN_DEPOSIT_2))
+            .with_attached_deposit(near_sdk::NearToken::from_yoctonear(MIN_DEPOSIT))
             .with_unused_gas_weight(1)
             .request_execution(
                 code_source,
@@ -265,7 +281,7 @@ impl EmailDkimVerifier {
                      env::panic_str(&format!("Unexpected method: {}", response.method));
                 }
 
-                let pubkey_str = response.params
+                let pubkey_str = response.response
                     .get("public_key")
                     .and_then(|v| v.as_str())
                     .expect("Response missing public_key")
@@ -291,6 +307,9 @@ impl EmailDkimVerifier {
     /// - `email_blob`: Plaintext raw RFC‑5322 email; set only for on‑chain DKIM verification.
     /// - `encrypted_email_blob`: Encrypted email envelope; set only for TEE‑private DKIM verification.
     /// - `params`: Optional JSON context forwarded to the worker (used as AEAD AAD in encrypted mode).
+    ///   In the encrypted path, this is alphbetized:
+    ///   `{ "account_id": "...", "network_id": "...", "payer_account_id": "..." }`
+    ///   and is serialized to JSON and used as the ChaCha20‑Poly1305 AAD.
     ///
     /// @returns
     /// - A `Promise` that resolves to `VerificationResult` via either `on_email_verification_onchain_result`
@@ -301,16 +320,16 @@ impl EmailDkimVerifier {
         payer_account_id: AccountId,
         email_blob: Option<String>,
         encrypted_email_blob: Option<serde_json::Value>,
-        params: Option<serde_json::Value>,
+        context: Option<serde_json::Value>,
     ) -> Promise {
         match (email_blob, encrypted_email_blob) {
             (Some(email), None) => self.request_email_verification_onchain_inner(
                 payer_account_id,
                 email,
-                params,
+                context,
             ),
             (None, Some(blob)) => {
-                self.request_email_verification_private_inner(payer_account_id, blob, params)
+                self.request_email_verification_private_inner(payer_account_id, blob, context)
             }
             (Some(_), Some(_)) => {
                 env::panic_str("provide either email_blob or encrypted_email_blob, not both")
@@ -325,13 +344,13 @@ impl EmailDkimVerifier {
         &mut self,
         payer_account_id: AccountId,
         email_blob: String,
-        params: Option<serde_json::Value>,
+        context: Option<serde_json::Value>,
     ) -> Promise {
         onchain_verify::request_email_verification_onchain_inner(
             self,
             payer_account_id,
             email_blob,
-            params,
+            context,
         )
     }
 
@@ -339,13 +358,13 @@ impl EmailDkimVerifier {
         &mut self,
         payer_account_id: AccountId,
         encrypted_email_blob: serde_json::Value,
-        params: Option<serde_json::Value>,
+        context: Option<serde_json::Value>,
     ) -> Promise {
         tee_verify::request_email_verification_private_inner(
             self,
             payer_account_id,
             encrypted_email_blob,
-            params,
+            context,
         )
     }
 
@@ -381,13 +400,9 @@ impl EmailDkimVerifier {
             new_public_key: String::new(),
             from_address: String::new(),
             email_timestamp_ms: None,
+            request_id: request_id.clone(),
         };
-        let request_id_opt = if request_id.is_empty() {
-            None
-        } else {
-            Some(request_id)
-        };
-        self.store_verification_result_if_needed(&request_id_opt, &vr);
+        self.store_verification_result_if_needed(&request_id, &vr);
     }
 
     #[private]
@@ -405,15 +420,14 @@ impl Default for EmailDkimVerifier {
 impl EmailDkimVerifier {
     fn store_verification_result_if_needed(
         &mut self,
-        request_id: &Option<String>,
+        request_id: &str,
         result: &VerificationResult,
     ) {
-        let Some(id) = request_id else {
-            return;
-        };
-        if id.is_empty() {
+        if request_id.is_empty() {
             return;
         }
+
+        let id = request_id.to_string();
 
         let entry = StoredVerificationResult {
             result: result.clone(),
@@ -443,15 +457,14 @@ impl EmailDkimVerifier {
 impl EmailDkimVerifier {
     pub fn store_verification_result_for_testing(
         &mut self,
-        request_id: &Option<String>,
+        request_id: &str,
         result: &VerificationResult,
     ) {
-        let Some(id) = request_id else {
-            return;
-        };
-        if id.is_empty() {
+        if request_id.is_empty() {
             return;
         }
+
+        let id = request_id.to_string();
 
         let entry = StoredVerificationResult {
             result: result.clone(),
