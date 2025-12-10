@@ -1,7 +1,7 @@
 use crate::{
     ext_outlayer, ext_self,
-    EmailDkimVerifier, ExecutionParams, InputArgs,
-    VerificationResult, WorkerResponse,
+    EmailDkimVerifier, ExecutionParams, OutlayerInputArgs,
+    VerificationResult, OutlayerWorkerResponse,
     MIN_DEPOSIT, OUTLAYER_CONTRACT_ID,
     OUTLAYER_WORKER_COMMIT, VERIFY_ENCRYPTED_EMAIL_METHOD,
     SecretsReference, SECRETS_OWNER_ID, SECRETS_PROFILE,
@@ -52,7 +52,7 @@ pub fn request_email_verification_private_inner(
     // after serializing it with serde_json.
     // Expected keys (alphabetical for canonical AAD):
     //   account_id, network_id, payer_account_id.
-    let input_args = InputArgs::new(
+    let input_args = OutlayerInputArgs::new(
         VERIFY_ENCRYPTED_EMAIL_METHOD,
         serde_json::json!({
             "encrypted_email_blob": encrypted_email_blob,
@@ -127,7 +127,7 @@ pub fn on_email_verification_private_result(
         }
     };
 
-    let worker_response: WorkerResponse = match serde_json::from_value(value.clone()) {
+    let worker_response: OutlayerWorkerResponse = match serde_json::from_value(value.clone()) {
         Ok(r) => r,
         Err(e) => {
             env::log_str(&format!("Failed to parse worker response (private): {e}"));
@@ -188,6 +188,6 @@ pub fn on_email_verification_private_result(
         email_timestamp_ms: verify_params.email_timestamp_ms,
         request_id: verify_params.request_id.clone(),
     };
-    contract.store_verification_result_if_needed(&verify_params.request_id, &vr);
+    contract.store_verification_result(&verify_params.request_id, &vr);
     vr
 }

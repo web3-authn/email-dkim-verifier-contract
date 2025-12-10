@@ -1,7 +1,7 @@
 use crate::{
     ext_outlayer, ext_self,
-    EmailDkimVerifier, InputArgs, VerificationResult,
-    WorkerResponse, MIN_DEPOSIT,
+    EmailDkimVerifier, OutlayerInputArgs, VerificationResult,
+    OutlayerWorkerResponse, MIN_DEPOSIT,
     OUTLAYER_CONTRACT_ID, OUTLAYER_WORKER_COMMIT,
     GET_DNS_RECORDS_METHOD,
     SecretsReference, SECRETS_OWNER_ID, SECRETS_PROFILE,
@@ -55,7 +55,7 @@ pub fn request_email_verification_onchain_inner(
         let _ = Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
     }
 
-    let input_args = InputArgs::new(
+    let input_args = OutlayerInputArgs::new(
         GET_DNS_RECORDS_METHOD,
         serde_json::json!({
             "email_blob": email_blob,
@@ -127,12 +127,12 @@ pub fn on_email_verification_onchain_result(
                 email_timestamp_ms: None,
                 request_id: String::new(),
             };
-            contract.store_verification_result_if_needed(&request_id, &vr);
+            contract.store_verification_result(&request_id, &vr);
             return vr;
         }
     };
 
-    let worker_response: WorkerResponse = match serde_json::from_value(value.clone()) {
+    let worker_response: OutlayerWorkerResponse = match serde_json::from_value(value.clone()) {
         Ok(r) => r,
         Err(e) => {
             env::log_str(&format!("Failed to parse worker response: {e}"));
@@ -144,7 +144,7 @@ pub fn on_email_verification_onchain_result(
                 email_timestamp_ms: None,
                 request_id: String::new(),
             };
-            contract.store_verification_result_if_needed(&request_id, &vr);
+            contract.store_verification_result(&request_id, &vr);
             return vr;
         }
     };
@@ -162,7 +162,7 @@ pub fn on_email_verification_onchain_result(
             email_timestamp_ms: None,
             request_id: String::new(),
         };
-        contract.store_verification_result_if_needed(&request_id, &vr);
+        contract.store_verification_result(&request_id, &vr);
         return vr;
     }
 
@@ -179,7 +179,7 @@ pub fn on_email_verification_onchain_result(
                     email_timestamp_ms: None,
                     request_id: String::new(),
                 };
-                contract.store_verification_result_if_needed(&request_id, &vr);
+                contract.store_verification_result(&request_id, &vr);
                 return vr;
             }
         };
@@ -194,7 +194,7 @@ pub fn on_email_verification_onchain_result(
             email_timestamp_ms: None,
             request_id: String::new(),
         };
-        contract.store_verification_result_if_needed(&request_id, &vr);
+        contract.store_verification_result(&request_id, &vr);
         return vr;
     }
 
@@ -209,7 +209,7 @@ pub fn on_email_verification_onchain_result(
             email_timestamp_ms: None,
             request_id: String::new(),
         };
-        contract.store_verification_result_if_needed(&request_id, &vr);
+        contract.store_verification_result(&request_id, &vr);
         return vr;
     }
 
@@ -224,7 +224,7 @@ pub fn on_email_verification_onchain_result(
             email_timestamp_ms: None,
             request_id: String::new(),
         };
-        contract.store_verification_result_if_needed(&request_id, &vr);
+        contract.store_verification_result(&request_id, &vr);
         return vr;
     }
 
@@ -257,6 +257,6 @@ pub fn on_email_verification_onchain_result(
         email_timestamp_ms,
         request_id: request_id.clone(),
     };
-    contract.store_verification_result_if_needed(&request_id, &vr);
+    contract.store_verification_result(&request_id, &vr);
     vr
 }

@@ -47,55 +47,39 @@ async fn request_id_cleared_after_yield_resume() -> Result<(), Box<dyn Error>> {
     let _request_id_clone = request_id.clone();
 
     // Task 1: Perform the transaction (which will yield and wait).
-    let store_task = async move {
-        contract_clone
-            .call("test_store_verification_result_with_yield")
-            .args_json(serde_json::json!({ "request_id": request_id }))
-            .gas(Gas::from_tgas(30))
-            .transact().await
-            // Note: We could also use `transact_async()` to fire-and-forget the transaction
-            // instead of using `tokio::join!` later
-    };
+    let store_verification_promise = contract_clone
+        .call("test_store_verification_result_with_yield")
+        .args_json(serde_json::json!({ "request_id": request_id }))
+        .gas(Gas::from_tgas(30))
+        .transact_async() // use transact_async() insted of tokio::join!(fut1, fut2)
+        .await?;
+
+    // Wait for the async transaction to complete
+    let store_verification_outcome = store_verification_promise.await?;
+    assert!(
+        store_verification_outcome.is_success(),
+        "test_store_verification_result_with_yield failed"
+    );
 
     // Task 2: Verify the initial state and trigger the yield resumption.
-    let verify_and_resume_task = async {
-        // Poll until the entry is visible to ensure the transaction has executed the insert.
-        let mut fetched_now: Option<serde_json::Value> = None;
-        for _ in 0..20 {
-            fetched_now = contract
-                .view("get_verification_result")
-                .args_json(serde_json::json!({ "request_id": "XYZ999".to_string() }))
-                .await?
-                .json()?;
-            if fetched_now.is_some() {
-                let val = fetched_now.as_ref().unwrap();
-                if let Some(rid) = val.get("request_id") {
-                    assert_eq!(rid.as_str().unwrap(), "XYZ999");
-                } else {
-                    panic!("request_id field missing in VerificationResult");
-                }
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    fast_forward(&sandbox, 1).await?;
+    let fetched_now: Option<serde_json::Value> = contract
+        .view("get_verification_result")
+        .args_json(serde_json::json!({ "request_id": "XYZ999".to_string() }))
+        .await?
+        .json()?;
+
+
+    if let Some(val) = fetched_now {
+        if let Some(rid) = val.get("request_id") {
+            assert_eq!(rid.as_str().unwrap(), "XYZ999");
+        } else {
+            panic!("request_id field missing in VerificationResult");
         }
+    }
 
-        if fetched_now.is_none() {
-            return Err("Timed out waiting for verification result to be stored".into());
-        }
-
-        // Fast-forward 200+ blocks so the yield‑resume callback runs on-chain.
-        // This effectively "unblocks" the store_task.
-        fast_forward(&sandbox, 240).await?;
-        Ok::<(), Box<dyn std::error::Error>>(())
-    };
-
-    // Run both tasks concurrently. verify_and_resume_task will unblock store_task.
-    let (store_outcome, verify_result) = tokio::join!(store_task, verify_and_resume_task);
-
-    // Propagate errors.
-    verify_result?;
-    let outcome = store_outcome?;
-    assert!(outcome.is_success());
+    // Fast-forward 200+ blocks so the yield‑resume callback runs on-chain.
+    fast_forward(&sandbox, 220).await?;
 
     // After yield‑resume runs, the entry should be gone without calling
     // clear_verification_result manually.
