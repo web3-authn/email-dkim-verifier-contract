@@ -325,7 +325,7 @@ impl EmailDkimVerifier {
         onchain_verify::request_email_verification_onchain_inner(
             self,
             payer_account_id,
-            email_blob_plain,
+            email_blob,
         )
     }
 
