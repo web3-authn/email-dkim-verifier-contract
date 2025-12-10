@@ -171,20 +171,6 @@ impl InputArgs {
     }
 }
 
-#[derive(near_sdk::serde::Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-struct VerifyParams {
-    verified: bool,
-    account_id: String,
-    new_public_key: String,
-    from_address: String,
-    email_timestamp_ms: Option<u64>,
-    #[serde(default)]
-    request_id: String,
-    error: Option<String>,
-}
-
-
 #[near]
 impl EmailDkimVerifier {
     #[init]
@@ -306,7 +292,7 @@ impl EmailDkimVerifier {
     /// - `payer_account_id`: Account that pays for the Outlayer execution (typically the relayer).
     /// - `email_blob`: Plaintext raw RFC‑5322 email; set only for on‑chain DKIM verification.
     /// - `encrypted_email_blob`: Encrypted email envelope; set only for TEE‑private DKIM verification.
-    /// - `params`: Optional JSON context forwarded to the worker (used as AEAD AAD in encrypted mode).
+    /// - `context`: Optional JSON context forwarded to the worker (used as AEAD AAD in encrypted mode).
     ///   In the encrypted path, this is alphbetized:
     ///   `{ "account_id": "...", "network_id": "...", "payer_account_id": "..." }`
     ///   and is serialized to JSON and used as the ChaCha20‑Poly1305 AAD.

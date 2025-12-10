@@ -104,7 +104,7 @@ Request params:
   },
   "context": {
     // Arbitrary JSON used as AEAD associated data (AAD),
-    // typically includes `account_id`, `network_id`, etc.
+    // typically includes `account_id`, `network_id`, `payer_account_id`.
   }
 }
 ```

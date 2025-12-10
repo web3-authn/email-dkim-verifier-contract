@@ -1,13 +1,26 @@
 use crate::{
     ext_outlayer, ext_self,
     EmailDkimVerifier, ExecutionParams, InputArgs,
-    VerificationResult, VerifyParams, WorkerResponse,
+    VerificationResult, WorkerResponse,
     MIN_DEPOSIT, OUTLAYER_CONTRACT_ID,
     OUTLAYER_WORKER_COMMIT, VERIFY_ENCRYPTED_EMAIL_METHOD,
     SecretsReference, SECRETS_OWNER_ID, SECRETS_PROFILE,
 };
 use near_sdk::serde_json::{self, json};
 use near_sdk::{env, AccountId, NearToken, Promise, PromiseError};
+
+#[derive(near_sdk::serde::Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct VerifyEncryptedEmailResponse {
+    verified: bool,
+    account_id: String,
+    new_public_key: String,
+    from_address: String,
+    email_timestamp_ms: Option<u64>,
+    #[serde(default)]
+    request_id: String,
+    error: Option<String>,
+}
 
 /// Internal helper: encrypted/TEE DKIM verification request path.
 pub fn request_email_verification_private_inner(
@@ -146,11 +159,11 @@ pub fn on_email_verification_private_result(
         return vr;
     }
 
-    let verify_params: VerifyParams =
+    let verify_params: VerifyEncryptedEmailResponse =
         match serde_json::from_value(worker_response.response.clone()) {
             Ok(p) => p,
             Err(e) => {
-                env::log_str(&format!("Failed to parse verify-encrypted-email response: {e}"));
+                env::log_str(&format!("Failed to parse {VERIFY_ENCRYPTED_EMAIL_METHOD} response: {e}"));
                 let vr = VerificationResult {
                     verified: false,
                     account_id: String::new(),
@@ -164,7 +177,7 @@ pub fn on_email_verification_private_result(
         };
 
     if let Some(err) = verify_params.error.as_deref() {
-        env::log_str(&format!("verify-encrypted-email worker error: {err}"));
+        env::log_str(&format!("{VERIFY_ENCRYPTED_EMAIL_METHOD} worker error: {err}"));
     }
 
     let vr = VerificationResult {
