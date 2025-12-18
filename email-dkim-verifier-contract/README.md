@@ -26,7 +26,7 @@ pub fn request_email_verification(
     payer_account_id: AccountId,
     email_blob: Option<String>,
     encrypted_email_blob: Option<serde_json::Value>,
-    params: Option<serde_json::Value>,
+    aead_context: Option<AeadContext>,
 ) -> Promise
 ```
 
@@ -44,10 +44,19 @@ pub fn request_email_verification(
   - Contains an X25519 ephemeral public key, nonce, and ChaCha20‑Poly1305 ciphertext.
   - **Use this field only for the TEE‑private DKIM path** (encrypted mode).
 
-- `params`
-  Optional JSON blob forwarded to the OutLayer worker:
-  - In on‑chain mode, it is currently unused (but still forwarded).
-  - In encrypted mode, it is used as AEAD associated data (`context`) when decrypting.
+- `aead_context`
+  Optional typed context forwarded to the OutLayer worker (used as AEAD associated data in encrypted mode):
+  - In on‑chain mode, it is ignored (the worker receives an empty context).
+  - In encrypted mode, it is serialized to JSON and passed as `context` to the worker, and then used as ChaCha20‑Poly1305 AAD when decrypting.
+  - The struct is:
+    ```rust
+    #[near(serializers = [json, borsh])]
+    pub struct AeadContext {
+        pub account_id: String,
+        pub network_id: String,
+        pub payer_account_id: String,
+    }
+    ```
 
 - Attached deposit
   - Must attach at least `MIN_DEPOSIT` (currently `0.01 NEAR`):
@@ -70,6 +79,7 @@ pub fn request_email_verification(
         pub new_public_key: String,
         pub from_address: String,
         pub email_timestamp_ms: Option<u64>,
+        pub request_id: String,
     }
 
     #[private]
@@ -219,5 +229,5 @@ just request
 `scripts/request_email_verification.sh`:
 
 - Loads `email-dkim-verifier-contract/tests/data/gmail_reset_full.eml` as `email_blob`.
-- Calls `request_email_verification(payer_account_id, email_blob=Some(...), encrypted_email_blob=None, params={})` on `$CONTRACT_ID`.
+- Calls `request_email_verification(payer_account_id, email_blob=Some(...), encrypted_email_blob=None, aead_context=None)` on `$CONTRACT_ID`.
 - Attaches enough gas and deposit for OutLayer execution.

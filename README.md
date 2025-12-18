@@ -1,6 +1,6 @@
 # Email DKIM Verifier Contract
 
-This repo contains a NEAR contract (`email-dkim-verifier-contract`) that uses yield/resume with [OutLayer](https://outlayer.fastnear.com/docs/getting-started) to fetch DKIM DNS TXT records for an email and verify the DKIM signature on‑chain.
+This repo contains a NEAR contract (`email-dkim-verifier-contract`) that uses yield/resume with [OutLayer](https://outlayer.fastnear.com/docs/getting-started) to run a WASI worker in a TEE. The worker fetches DKIM DNS TXT records **and verifies the DKIM signature inside the worker**, returning a summarized `VerificationResult` back on‑chain.
 
 Used for email-based account recovery for tatchi.xyz accounts; other contracts call this one as a stateless global verifier.
 
@@ -31,49 +31,27 @@ Used for email-based account recovery for tatchi.xyz accounts; other contracts c
   just upgrade
   ```
 
-- Call DKIM verifier with a real Gmail sample:
-  ```bash
-  just request
-  ```
-
 ## Outlayer worker key management
 
-The encrypted DKIM flow uses a KEM + AEAD scheme (X25519 + HKDF‑SHA256 + ChaCha20‑Poly1305). Each deployment needs a worker keypair `(sk_worker, pk_worker)`:
+The encrypted DKIM flow uses a KEM + AEAD scheme (X25519 + HKDF‑SHA256 + ChaCha20‑Poly1305). The worker derives a static X25519 keypair `(sk_worker, pk_worker)` from a protected seed:
 
-- `sk_worker` (private): derived inside the worker from the protected seed `PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32` stored in the Outlayer secrets/env (configured as a “Hex 32 bytes (64 chars)” secret).
-- `pk_worker` (public): stored in contract state and exposed via `get_outlayer_encryption_public_key`.
+- `PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32` (private, protected): 64‑char hex string (32 bytes) stored as an Outlayer **protected** secret (“Hex 32 bytes (64 chars)”).
+- `sk_worker` / `pk_worker`: derived inside the worker via HKDF‑SHA256 (info = `"outlayer-email-dkim-x25519"`). The private key never leaves the TEE.
+- `pk_worker` is stored in contract state and exposed via `get_outlayer_encryption_public_key`.
 
-### Generate a keypair
+For local testing (outside Outlayer), the worker also accepts `OUTLAYER_WORKER_SK_SEED_HEX32` with the same 64‑char hex seed.
 
-From the repo root:
+### Create / rotate the protected secret + refresh contract public key
 
-```bash
-just gen-keypair
-```
-
-This runs `cargo run --bin generate_x25519_keypair` and prints:
-
-```text
-OUTLAYER_WORKER_SK_B64=...
-OUTLAYER_WORKER_PK_B64=...
-```
-
-- Convert `OUTLAYER_WORKER_SK_B64` (base64) to a 64‑char hex string (representing the same 32 bytes), and set that hex string as the worker secret `PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32` (Outlayer dashboard/infra, using “Hex 32 bytes (64 chars)”).
-- Use `OUTLAYER_WORKER_PK_B64` when initializing or rotating the contract’s public key.
-
-### Rotate keys
-
-There is a helper script to guide rotation:
-
-```bash
-scripts/rotate_outlayer_keys.sh
-```
-
-What it does:
-
-1. Runs the keygen binary to produce a new X25519 keypair and prints `OUTLAYER_WORKER_SK_B64` / `OUTLAYER_WORKER_PK_B64`.
-2. Prompts you to update the Outlayer worker secret `PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32` with a 64‑char hex encoding of `OUTLAYER_WORKER_SK_B64`’s underlying 32 bytes, and restart the worker (this step is still manual, because it depends on your Outlayer deployment).
-3. Calls `set_outlayer_encryption_public_key` on the deployed `EmailDkimVerifier` contract using `OUTLAYER_WORKER_PK_B64`, reading `CONTRACT_ID`, `NEAR_NETWORK_ID`, `DEPLOYER_PUBLIC_KEY`, and `DEPLOYER_PRIVATE_KEY` from `.env`.
+1. In the Outlayer [Secrets Management](https://outlayer.fastnear.com/secrets) page, create a protected secret `PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32` with type **"Hex 32 bytes (64 chars)"**. Outlayer will generate the value for you.
+  - leave `Branch` empty
+  - set `profile` to `main` (or whatever is set in `lib.rs`: `SECRETS_PROFILE = "main"`)
+2. Restart/redeploy the worker so it picks up the updated secret.
+3. Refresh the contract’s stored public key (owner‑only; triggers worker `get-public-key`):
+   ```bash
+   just set-outlayer-keys
+   # or: sh ./scripts/set_outlayer_keys.sh
+   ```
 
 After rotation:
 

@@ -10,7 +10,6 @@ wasi-http-client = { version = "0.2.1", features = ["json"] }
 base64 = "0.13"
 rsa = { version = "0.10.0-rc.10", default-features = false, features = ["sha2", "encoding"] }
 chacha20poly1305 = "0.10"
-rand = "0.8"
 hkdf = "0.12"
 sha2 = "0.10"
 x25519-dalek = "1"
