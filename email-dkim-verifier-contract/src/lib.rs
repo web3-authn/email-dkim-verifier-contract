@@ -268,9 +268,11 @@ impl EmailDkimVerifier {
 
         let source = self.resolve_outlayer_worker_wasm_source();
         let code_source = serde_json::json!({
-            "url": source.url,
-            "hash": source.hash,
-            "build_target": "wasm32-wasip2",
+            "WasmUrl": {
+                "url": source.url,
+                "hash": source.hash,
+                "build_target": "wasm32-wasip2",
+            }
         });
 
         // let code_source = serde_json::json!({

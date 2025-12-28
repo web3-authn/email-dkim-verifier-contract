@@ -79,9 +79,11 @@ pub fn request_email_verification_private_inner(
 
     let source = contract.resolve_outlayer_worker_wasm_source();
     let code_source = json!({
-        "url": source.url,
-        "hash": source.hash,
-        "build_target": "wasm32-wasip2"
+        "WasmUrl": {
+            "url": source.url,
+            "hash": source.hash,
+            "build_target": "wasm32-wasip2"
+        }
     });
 
     // let code_source = json!({

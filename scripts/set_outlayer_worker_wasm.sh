@@ -12,7 +12,7 @@ fi
 source .env
 : "${CONTRACT_ID:?Set CONTRACT_ID in .env to the deployed EmailDkimVerifier contract account ID}"
 : "${NEAR_NETWORK_ID:?Set NEAR_NETWORK_ID in .env (e.g. testnet)}"
-: "${DEPLOYER_PRIVATE_KEY:?Set DEPLOYER_PRIVATE_KEY in .env to the contract's signer private key}"
+: "${DEPLOYER_PRIVATE_KEY:?Set DEPLOYER_PRIVATE_KEY in .env to the contract signer private key}"
 : "${OUTLAYER_WORKER_WASM_URL:?Set OUTLAYER_WORKER_WASM_URL in .env to the hosted worker wasm URL}"
 
 if ! command -v curl >/dev/null 2>&1; then
