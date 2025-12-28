@@ -31,6 +31,26 @@ Used for email-based account recovery for tatchi.xyz accounts; other contracts c
   just upgrade
   ```
 
+## Outlayer worker WASM publishing (R2)
+
+The Outlayer worker is built and uploaded by CI. Each run uploads:
+
+- `workers/email-dkim/<sha>.wasm`
+- `workers/email-dkim/<sha>.wasm.sha256`
+
+To point the contract at a new worker build:
+
+1. Set `OUTLAYER_WORKER_WASM_URL` in `.env` to the public R2 URL for the `.wasm`.
+2. Run:
+   ```bash
+   just set-outlayer-wasm
+   ```
+   This pulls the `.sha256` from R2 and stores the URL + hash in contract state.
+3. Optional integrity check: download the wasm and compute the hash locally:
+   ```bash
+   just set-outlayer-wasm-from-r2
+   ```
+
 ## Outlayer worker key management
 
 The encrypted DKIM flow uses a KEM + AEAD scheme (X25519 + HKDF‑SHA256 + ChaCha20‑Poly1305). The worker derives a static X25519 keypair `(sk_worker, pk_worker)` from a protected seed:

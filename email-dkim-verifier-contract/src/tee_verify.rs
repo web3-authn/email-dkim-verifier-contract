@@ -3,7 +3,7 @@ use crate::{
     EmailDkimVerifier, ExecutionParams, OutlayerInputArgs,
     VerificationResult, OutlayerWorkerResponse,
     MIN_DEPOSIT, OUTLAYER_CONTRACT_ID,
-    OUTLAYER_WORKER_COMMIT, VERIFY_ENCRYPTED_EMAIL_METHOD,
+    VERIFY_ENCRYPTED_EMAIL_METHOD,
     SecretsReference, SECRETS_OWNER_ID, SECRETS_PROFILE,
 };
 use near_sdk::serde_json::{self, json};
@@ -35,7 +35,7 @@ pub struct AeadContext {
 
 /// Internal helper: encrypted/TEE DKIM verification request path.
 pub fn request_email_verification_private_inner(
-    _contract: &mut EmailDkimVerifier,
+    contract: &mut EmailDkimVerifier,
     payer_account_id: AccountId,
     encrypted_email_blob: serde_json::Value,
     aead_context: AeadContext,
@@ -77,13 +77,20 @@ pub fn request_email_verification_private_inner(
     );
     let input_payload = input_args.to_json_string();
 
+    let source = contract.resolve_outlayer_worker_wasm_source();
     let code_source = json!({
-        "GitHub": {
-            "repo": "github.com/web3-authn/email-dkim-verifier-contract",
-            "commit": OUTLAYER_WORKER_COMMIT,
-            "build_target": "wasm32-wasip2"
-        }
+        "url": source.url,
+        "hash": source.hash,
+        "build_target": "wasm32-wasip2"
     });
+
+    // let code_source = json!({
+    //     "GitHub": {
+    //         "repo": "github.com/web3-authn/email-dkim-verifier-contract",
+    //         "commit": "main",
+    //         "build_target": "wasm32-wasip2"
+    //     }
+    // });
 
     let resource_limits = json!({
         "max_instructions": 10_000_000_000u64,

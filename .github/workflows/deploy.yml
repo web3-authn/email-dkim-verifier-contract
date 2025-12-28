@@ -1,0 +1,51 @@
+name: Deploy Vite Example
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "examples/vite/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: testnet
+    permissions:
+      contents: read
+    env:
+      CF_PAGES_PROJECT_VITE: email-recovery-example
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: examples/vite/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: examples/vite
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: examples/vite
+        run: pnpm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: ${{ env.CF_PAGES_PROJECT_VITE }}
+          directory: examples/vite/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

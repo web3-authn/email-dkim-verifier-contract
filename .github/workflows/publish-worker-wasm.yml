@@ -1,0 +1,98 @@
+name: Publish Outlayer Worker (R2)
+
+on:
+  workflow_dispatch:
+    inputs:
+      object_key:
+        description: Optional R2 object key (e.g. workers/email-dkim/<sha>.wasm)
+        required: false
+        default: ""
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "worker-build/**"
+      - ".github/workflows/publish-worker-wasm.yml"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'outlayer1' }}
+      R2_ENDPOINT: ${{ vars.R2_ENDPOINT || 'https://ba924da36f2ffc3839e8d323000b66b4.r2.cloudflarestorage.com' }}
+      R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL || 'https://outlayer.tatchi.xyz' }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      OBJECT_KEY: ${{ inputs.object_key != '' && inputs.object_key || format('workers/email-dkim/{0}.wasm', github.sha) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+      - name: Build worker wasm + hash
+        run: |
+          chmod +x ./worker-build/build.sh
+          ./worker-build/build.sh
+
+      - name: Upload wasm to R2
+        run: |
+          if [[ -z "${R2_ACCESS_KEY_ID:-}" || -z "${R2_SECRET_ACCESS_KEY:-}" ]]; then
+            echo "Missing R2 credentials (R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY)." >&2
+            exit 1
+          fi
+          if [[ -z "${R2_ENDPOINT:-}" || -z "${R2_BUCKET:-}" ]]; then
+            echo "Missing R2 config (R2_ENDPOINT / R2_BUCKET)." >&2
+            exit 1
+          fi
+          OBJECT_KEY="${OBJECT_KEY#/}"
+          BUCKET_BASE_URL="${R2_ENDPOINT%/}"
+          if [[ "${BUCKET_BASE_URL}" != */"${R2_BUCKET}" ]]; then
+            BUCKET_BASE_URL="${BUCKET_BASE_URL}/${R2_BUCKET}"
+          fi
+          OBJECT_URL="${BUCKET_BASE_URL%/}/${OBJECT_KEY}"
+          curl -fSs --retry 3 --retry-delay 2 \
+            --aws-sigv4 "aws:amz:auto:s3" \
+            --user "${R2_ACCESS_KEY_ID}:${R2_SECRET_ACCESS_KEY}" \
+            -H "Content-Type: application/wasm" \
+            -H "Cache-Control: public, max-age=31536000, immutable" \
+            --upload-file "worker-build/dist/email-dkim-verifier-contract.wasm" \
+            "${OBJECT_URL}"
+
+      - name: Upload wasm hash to R2
+        run: |
+          OBJECT_KEY="${OBJECT_KEY#/}"
+          BUCKET_BASE_URL="${R2_ENDPOINT%/}"
+          if [[ "${BUCKET_BASE_URL}" != */"${R2_BUCKET}" ]]; then
+            BUCKET_BASE_URL="${BUCKET_BASE_URL}/${R2_BUCKET}"
+          fi
+          OBJECT_URL="${BUCKET_BASE_URL%/}/${OBJECT_KEY}.sha256"
+          curl -fSs --retry 3 --retry-delay 2 \
+            --aws-sigv4 "aws:amz:auto:s3" \
+            --user "${R2_ACCESS_KEY_ID}:${R2_SECRET_ACCESS_KEY}" \
+            -H "Content-Type: text/plain" \
+            -H "Cache-Control: public, max-age=31536000, immutable" \
+            --upload-file "worker-build/dist/email-dkim-verifier-contract.wasm.sha256" \
+            "${OBJECT_URL}"
+
+      - name: Publish summary
+        run: |
+          OBJECT_KEY="${OBJECT_KEY#/}"
+          HASH="$(cat worker-build/dist/email-dkim-verifier-contract.wasm.sha256)"
+          {
+            echo "### Outlayer worker wasm";
+            echo "- R2 object: s3://${R2_BUCKET}/${OBJECT_KEY}";
+            if [[ -n "${R2_PUBLIC_BASE_URL:-}" ]]; then
+              echo "- Public URL: ${R2_PUBLIC_BASE_URL%/}/${OBJECT_KEY}";
+              echo "- SHA-256 URL: ${R2_PUBLIC_BASE_URL%/}/${OBJECT_KEY}.sha256";
+            fi
+            echo "- SHA-256: ${HASH}";
+          } >> "${GITHUB_STEP_SUMMARY}"

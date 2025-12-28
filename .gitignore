@@ -6,3 +6,9 @@ target
 **/.env.*
 
 commands.sh
+
+examples/vite/node_modules
+examples/vite/dist
+examples/vite/.vite
+examples/vite/.env
+worker-build/dist

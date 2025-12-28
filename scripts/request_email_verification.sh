@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Script to call the EmailDkimVerifier contract's `request_email_verification_onchain`
+# Script to call the EmailDkimVerifier contract's `request_email_verification`
 # with a sample email that includes the DKIM-Signature (on-chain DKIM mode).
 #
 # Usage:
@@ -27,8 +27,7 @@ EMAIL_BLOB="$(cat email-dkim-verifier-contract/tests/data/gmail_reset_full.eml)"
 JSON_ARGS=$(jq -n \
   --arg payer_account_id "$SIGNER_ID" \
   --arg email_blob "$EMAIL_BLOB" \
-  --argjson params '{}' \
-  '{payer_account_id: $payer_account_id, email_blob: $email_blob, params: $params}')
+  '{payer_account_id: $payer_account_id, email_blob: $email_blob, encrypted_email_blob: null, aead_context: null}')
 
 near contract call-function as-transaction "$CONTRACT_ID" request_email_verification \
   json-args "$JSON_ARGS" \

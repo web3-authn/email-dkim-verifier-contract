@@ -13,8 +13,10 @@ use schemars::JsonSchema;
 use tee_verify::AeadContext;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
-// Git commit hash of the Outlayer WASI worker to execute.
-const OUTLAYER_WORKER_COMMIT: &str = "main";
+// Prebuilt worker WASM hosted via FastFS or another static host.
+const OUTLAYER_WORKER_WASM_URL: &str = "";
+// SHA-256 hex of the worker WASM (matches the hosted binary).
+const OUTLAYER_WORKER_WASM_HASH: &str = "";
 // Default public encryption key for the Outlayer worker (can be overridden via contract state).
 const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
 // Minimum deposit forwarded to OutLayer (0.01 NEAR).
@@ -38,6 +40,8 @@ enum StorageKey {
 pub struct EmailDkimVerifier {
     outlayer_encryption_public_key: String,
     verification_results_by_request_id: IterableMap<String, StoredVerificationResult>,
+    outlayer_worker_wasm_url: String,
+    outlayer_worker_wasm_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, BorshSerialize, BorshDeserialize)]
@@ -55,6 +59,19 @@ pub struct VerificationResult {
 pub struct StoredVerificationResult {
     result: VerificationResult,
     created_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "near_sdk::serde")]
+pub struct OutlayerWorkerWasmSource {
+    pub url: String,
+    pub hash: String,
+}
+
+#[derive(BorshDeserialize)]
+struct EmailDkimVerifierV1 {
+    outlayer_encryption_public_key: String,
+    verification_results_by_request_id: IterableMap<String, StoredVerificationResult>,
 }
 
 #[derive(near_sdk::serde::Serialize, near_sdk::serde::Deserialize)]
@@ -181,6 +198,25 @@ impl EmailDkimVerifier {
             verification_results_by_request_id: IterableMap::new(
                 StorageKey::VerificationResultsByRequestId,
             ),
+            outlayer_worker_wasm_url: OUTLAYER_WORKER_WASM_URL.to_string(),
+            outlayer_worker_wasm_hash: OUTLAYER_WORKER_WASM_HASH.to_string(),
+        }
+    }
+
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        assert_eq!(
+            env::predecessor_account_id(),
+            env::current_account_id(),
+            "Only the contract owner can migrate EmailDkimVerifier"
+        );
+        let old: EmailDkimVerifierV1 = env::state_read()
+            .expect("EmailDkimVerifier state is missing; cannot migrate");
+        Self {
+            outlayer_encryption_public_key: old.outlayer_encryption_public_key,
+            verification_results_by_request_id: old.verification_results_by_request_id,
+            outlayer_worker_wasm_url: OUTLAYER_WORKER_WASM_URL.to_string(),
+            outlayer_worker_wasm_hash: OUTLAYER_WORKER_WASM_HASH.to_string(),
         }
     }
 
@@ -193,6 +229,34 @@ impl EmailDkimVerifier {
         self.outlayer_encryption_public_key.clone()
     }
 
+    pub fn get_outlayer_worker_wasm_source(&self) -> OutlayerWorkerWasmSource {
+        OutlayerWorkerWasmSource {
+            url: self.outlayer_worker_wasm_url.clone(),
+            hash: self.outlayer_worker_wasm_hash.clone(),
+        }
+    }
+
+    #[payable]
+    pub fn set_outlayer_worker_wasm_source(&mut self, url: String, hash: String) {
+        assert_eq!(
+            env::predecessor_account_id(),
+            env::current_account_id(),
+            "Only the contract owner can set the Outlayer worker wasm source"
+        );
+
+        let url = url.trim().to_string();
+        let hash = hash.trim().to_string();
+        if url.is_empty() {
+            env::panic_str("Outlayer worker wasm URL must not be empty");
+        }
+        if hash.is_empty() {
+            env::panic_str("Outlayer worker wasm hash must not be empty");
+        }
+
+        self.outlayer_worker_wasm_url = url;
+        self.outlayer_worker_wasm_hash = hash;
+    }
+
     #[payable]
     pub fn set_outlayer_encryption_public_key(&mut self) -> Promise {
         assert_eq!(env::predecessor_account_id(), env::current_account_id(),
@@ -202,13 +266,20 @@ impl EmailDkimVerifier {
         assert!(attached >= MIN_DEPOSIT,
             "Attach at least 0.01 NEAR for Outlayer execution");
 
+        let source = self.resolve_outlayer_worker_wasm_source();
         let code_source = serde_json::json!({
-            "GitHub": {
-                "repo": "github.com/web3-authn/email-dkim-verifier-contract",
-                "commit": OUTLAYER_WORKER_COMMIT,
-                "build_target": "wasm32-wasip2",
-            }
+            "url": source.url,
+            "hash": source.hash,
+            "build_target": "wasm32-wasip2",
         });
+
+        // let code_source = serde_json::json!({
+        //     "GitHub": {
+        //         "repo": "github.com/web3-authn/email-dkim-verifier-contract",
+        //         "commit": "main",
+        //         "build_target": "wasm32-wasip2",
+        //     }
+        // });
 
         let resource_limits = serde_json::json!({
             "max_instructions": 10_000_000_000u64,
@@ -282,6 +353,66 @@ impl EmailDkimVerifier {
         self.verification_results_by_request_id
             .get(&request_id)
             .map(|stored| stored.result.clone())
+    }
+
+    pub(crate) fn resolve_outlayer_worker_wasm_source(&self) -> OutlayerWorkerWasmSource {
+        let url = if self.outlayer_worker_wasm_url.trim().is_empty() {
+            OUTLAYER_WORKER_WASM_URL.to_string()
+        } else {
+            self.outlayer_worker_wasm_url.clone()
+        };
+        let hash = if self.outlayer_worker_wasm_hash.trim().is_empty() {
+            OUTLAYER_WORKER_WASM_HASH.to_string()
+        } else {
+            self.outlayer_worker_wasm_hash.clone()
+        };
+
+        if url.trim().is_empty() || hash.trim().is_empty() {
+            env::panic_str("Outlayer worker wasm source is not configured");
+        }
+
+        OutlayerWorkerWasmSource { url, hash }
+    }
+
+    /// Unified entrypoint for requesting DKIM verification.
+    ///
+    /// - On-chain DKIM (public): set `email_blob = Some(raw_rfc5322_email)`.
+    /// - TEE-private DKIM (encrypted): set `encrypted_email_blob = Some(envelope)` and
+    ///   provide `aead_context = Some(...)`.
+    ///
+    /// Exactly one of `email_blob` or `encrypted_email_blob` must be provided.
+    #[payable]
+    pub fn request_email_verification(
+        &mut self,
+        payer_account_id: AccountId,
+        email_blob: Option<String>,
+        encrypted_email_blob: Option<serde_json::Value>,
+        aead_context: Option<AeadContext>,
+    ) -> Promise {
+        match (email_blob, encrypted_email_blob, aead_context) {
+            (Some(email_blob), None, _) => onchain_verify::request_email_verification_onchain_inner(
+                self,
+                payer_account_id,
+                email_blob,
+            ),
+            (None, Some(encrypted_email_blob), Some(aead_context)) => {
+                tee_verify::request_email_verification_private_inner(
+                    self,
+                    payer_account_id,
+                    encrypted_email_blob,
+                    aead_context,
+                )
+            }
+            (Some(_), Some(_), _) => env::panic_str(
+                "Provide only one of email_blob or encrypted_email_blob to request_email_verification",
+            ),
+            (None, Some(_), None) => env::panic_str(
+                "Missing aead_context for encrypted_email_blob in request_email_verification",
+            ),
+            (None, None, _) => env::panic_str(
+                "Missing email_blob or encrypted_email_blob in request_email_verification",
+            ),
+        }
     }
 
     /// @params

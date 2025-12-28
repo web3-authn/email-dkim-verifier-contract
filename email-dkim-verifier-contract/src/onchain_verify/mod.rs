@@ -2,7 +2,7 @@ use crate::{
     ext_outlayer, ext_self,
     EmailDkimVerifier, OutlayerInputArgs, VerificationResult,
     OutlayerWorkerResponse, MIN_DEPOSIT,
-    OUTLAYER_CONTRACT_ID, OUTLAYER_WORKER_COMMIT,
+    OUTLAYER_CONTRACT_ID,
     GET_DNS_RECORDS_METHOD,
     SecretsReference, SECRETS_OWNER_ID, SECRETS_PROFILE,
 };
@@ -32,7 +32,7 @@ struct DnsLookupParams {
 
 /// Internal helper: on-chain DKIM verification request path.
 pub fn request_email_verification_onchain_inner(
-    _contract: &mut EmailDkimVerifier,
+    contract: &mut EmailDkimVerifier,
     payer_account_id: AccountId,
     email_blob: String,
 ) -> Promise {
@@ -63,13 +63,20 @@ pub fn request_email_verification_onchain_inner(
     );
     let input_payload = input_args.to_json_string();
 
+    let source = contract.resolve_outlayer_worker_wasm_source();
     let code_source = json!({
-        "GitHub": {
-            "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
-            "commit": OUTLAYER_WORKER_COMMIT,
-            "build_target": "wasm32-wasip2"
-        }
+        "url": source.url,
+        "hash": source.hash,
+        "build_target": "wasm32-wasip2"
     });
+
+    // let code_source = json!({
+    //     "GitHub": {
+    //         "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
+    //         "commit": "main",
+    //         "build_target": "wasm32-wasip2"
+    //     }
+    // });
 
     let resource_limits = json!({
         "max_instructions": 10_000_000_000u64,

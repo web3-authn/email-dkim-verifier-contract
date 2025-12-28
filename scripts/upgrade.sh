@@ -15,5 +15,4 @@ cargo near deploy build-reproducible-wasm "$CONTRACT_ID" \
 	--signer-private-key "$DEPLOYER_PRIVATE_KEY" \
 	send
 
-# This only works if storage layout hasn't changed from last deployment
-# If storage layout has changed, you must delete and re-create the contract, see README.md
+# If storage layout has changed, run scripts/migrate.sh after the upgrade.
