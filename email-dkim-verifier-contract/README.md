@@ -1,6 +1,6 @@
 # Email DKIM Verifier Contract
 
-A NEAR contract that uses OutLayer to fetch DKIM DNS TXT records for an email and verify the DKIM signature fully on‑chain.
+A NEAR contract that uses OutLayer to run DKIM verification for email recovery.
 
 This is a **stateless, global** verifier. Other contracts (e.g. per‑user recovery contracts) call it to check `dkim_valid == true` and then apply their own allow‑list / recovery policies.
 
@@ -60,9 +60,9 @@ pub fn request_email_verification(
     ```
 
 - `request_id`
-  Optional request ID hint used for frontend polling.
+  Optional request ID hint used for correlation by the *caller contract*.
   - In on‑chain mode, the contract derives `request_id` from the email Subject when present.
-  - In encrypted mode, pass `request_id` so the contract can store a terminal failure result even if the worker cannot decrypt/parse the Subject (e.g. wrong AEAD context / Outlayer execution failure).
+  - In encrypted mode, pass `request_id` so the contract can echo it back even if the worker cannot decrypt/parse the Subject (e.g. wrong AEAD context / Outlayer execution failure).
 
 - Attached deposit
   - Must attach at least `MIN_DEPOSIT` (currently `0.01 NEAR`):
@@ -86,6 +86,7 @@ pub fn request_email_verification(
         pub from_address: String,
         pub email_timestamp_ms: Option<u64>,
         pub request_id: String,
+        pub error: Option<String>,
     }
 
     #[private]
@@ -114,7 +115,7 @@ pub fn request_email_verification(
     - `from_address` is provided by the worker, already normalized.
   - In both modes:
     - `verified == true` means DKIM verification passed and the message contained a valid recovery instruction, if present.
-    - `verified == false` covers any failure (OutLayer error, DNS error, DKIM mismatch, RSA failure, malformed recovery instruction, etc.).
+    - `verified == false` covers any failure (OutLayer error, DNS error, DKIM mismatch, RSA failure, malformed recovery instruction, etc.). `error` may be populated with a diagnostic string.
     - `account_id` / `new_public_key`:
       - When `verified == true` and the email matches the recovery format
         `Subject: recover-<REQUEST_ID> <account_id>` and body line `ed25519:<new_public_key>`, they are populated as:
@@ -125,24 +126,18 @@ pub fn request_email_verification(
       - Parsed from the `Date:` header using RFC 2822 parsing and converted to milliseconds since Unix epoch (UTC).
       - `None` if the `Date:` header is missing or can’t be parsed.
 
-### Request IDs and frontend polling
+### Request IDs (no polling state)
 
-For email‑recovery flows, the contract supports a short‑lived `request_id` embedded in the Subject so the frontend can poll the result without talking to the relayer:
+For email‑recovery flows, the contract supports a `request_id` embedded in the Subject so the caller contract can correlate results to an attempt:
 
 - Subject format with `request_id`:
   - `Subject: recover-<REQUEST_ID> <account_id> ed25519:<public_key>`
   - Example: `recover-123ABC alice.testnet ed25519:HPHNMfHwmBJSqcArYZ5ptTZpukvFoMtuU8TcV2T7mEEy`
-- When OutLayer finishes (on‑chain or TEE mode), the contract:
-  - Parses `REQUEST_ID` from the Subject if present.
-  - Stores the `VerificationResult` in an internal map keyed by `request_id`.
-  - Schedules a `clear_verification_result(request_id)` call via yield‑resume so the entry is automatically deleted after ~200 blocks.
-- For encrypted mode, passing `request_id` to `request_email_verification(...)` ensures the contract can still write a terminal failure result for polling even if Outlayer fails before the worker returns a parsed `request_id`.
-- Frontend API:
-  - Call `get_verification_result(request_id: String) -> Option<VerificationResult>`.
-  - Interpret the response as:
-    - `None` → pending, expired, or already cleared.
-    - `Some(VerificationResult { verified: true, .. })` → DKIM passed and recovery instruction parsed.
-    - `Some(VerificationResult { verified: false, .. })` → DKIM or recovery parsing failed.
+
+Important:
+
+- `EmailDkimVerifier` does **not** store `request_id -> VerificationResult` for frontend polling.
+- The caller contract (EmailRecoverer) should store request lifecycle state and expose a single polling view for the frontend.
 
 Typical usage from another contract:
 

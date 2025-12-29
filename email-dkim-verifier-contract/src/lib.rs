@@ -2,12 +2,10 @@ pub mod onchain_verify;
 pub mod tee_verify;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use near_sdk::store::IterableMap;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::serde_json::{self, json};
+use near_sdk::serde_json::{self};
 use near_sdk::{
-    env, ext_contract, near, AccountId, BorshStorageKey, Gas, GasWeight, Promise,
-    PromiseError,
+    env, ext_contract, near, AccountId, Promise, PromiseError,
 };
 use schemars::JsonSchema;
 use tee_verify::AeadContext;
@@ -26,16 +24,9 @@ pub const GET_DNS_RECORDS_METHOD: &str = "get-dns-records";
 pub const VERIFY_ENCRYPTED_EMAIL_METHOD: &str = "verify-encrypted-email";
 pub const GET_PUBLIC_KEY_METHOD: &str = "get-public-key";
 
-
-#[derive(BorshSerialize, BorshStorageKey)]
-enum StorageKey {
-    VerificationResultsByRequestId,
-}
-
 #[near(contract_state)]
 pub struct EmailDkimVerifier {
     outlayer_encryption_public_key: String,
-    verification_results_by_request_id: IterableMap<String, StoredVerificationResult>,
     outlayer_worker_wasm_url: String,
     outlayer_worker_wasm_hash: String,
 }
@@ -49,12 +40,47 @@ pub struct VerificationResult {
     pub from_address: String,
     pub email_timestamp_ms: Option<u64>,
     pub request_id: String,
+    /// Optional diagnostic string for failures (e.g. worker error, DNS error).
+    ///
+    /// Note: this is not persisted in contract state (Borsh) so that adding it
+    /// stays backwards-compatible with previously stored `VerificationResult`s.
+    #[borsh(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
-#[derive(BorshSerialize, BorshDeserialize)]
-pub struct StoredVerificationResult {
-    result: VerificationResult,
-    created_at_ms: u64,
+impl VerificationResult {
+    pub fn failure(request_id: impl AsRef<str>, error: impl Into<String>) -> Self {
+        Self {
+            verified: false,
+            account_id: String::new(),
+            new_public_key: String::new(),
+            from_address: String::new(),
+            email_timestamp_ms: None,
+            request_id: request_id.as_ref().to_string(),
+            error: Some(error.into()),
+        }
+    }
+}
+
+mod legacy_state_v1 {
+    use super::VerificationResult;
+    use borsh::{BorshDeserialize, BorshSerialize};
+    use near_sdk::store::IterableMap;
+
+    #[derive(BorshSerialize, BorshDeserialize)]
+    pub struct StoredVerificationResult {
+        pub result: VerificationResult,
+        pub created_at_ms: u64,
+    }
+
+    #[derive(BorshDeserialize)]
+    pub struct EmailDkimVerifierV1 {
+        pub outlayer_encryption_public_key: String,
+        pub _verification_results_by_request_id: IterableMap<String, StoredVerificationResult>,
+        pub outlayer_worker_wasm_url: String,
+        pub outlayer_worker_wasm_hash: String,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -186,11 +212,26 @@ impl EmailDkimVerifier {
     pub fn new() -> Self {
         Self {
             outlayer_encryption_public_key: OUTLAYER_ENCRYPTION_PUBKEY.to_string(),
-            verification_results_by_request_id: IterableMap::new(
-                StorageKey::VerificationResultsByRequestId,
-            ),
             outlayer_worker_wasm_url: String::new(),
             outlayer_worker_wasm_hash: String::new(),
+        }
+    }
+
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        assert_eq!(
+            env::predecessor_account_id(),
+            env::current_account_id(),
+            "Only the contract owner can migrate"
+        );
+
+        let old: legacy_state_v1::EmailDkimVerifierV1 =
+            env::state_read().expect("Old state not found");
+
+        Self {
+            outlayer_encryption_public_key: old.outlayer_encryption_public_key,
+            outlayer_worker_wasm_url: old.outlayer_worker_wasm_url,
+            outlayer_worker_wasm_hash: old.outlayer_worker_wasm_hash,
         }
     }
 
@@ -331,12 +372,6 @@ impl EmailDkimVerifier {
         }
     }
 
-    pub fn get_verification_result(&self, request_id: String) -> Option<VerificationResult> {
-        self.verification_results_by_request_id
-            .get(&request_id)
-            .map(|stored| stored.result.clone())
-    }
-
     pub(crate) fn resolve_outlayer_worker_wasm_source(&self) -> OutlayerWorkerWasmSource {
         let url = self.outlayer_worker_wasm_url.trim().to_string();
         let hash = self.outlayer_worker_wasm_hash.trim().to_string();
@@ -443,34 +478,6 @@ impl EmailDkimVerifier {
         )
     }
 
-    fn store_verification_result(&mut self, request_id: &str, result: &VerificationResult) {
-        if request_id.is_empty() {
-            return;
-        }
-
-        let id = request_id.to_string();
-
-        let entry = StoredVerificationResult {
-            result: result.clone(),
-            created_at_ms: env::block_timestamp() / 1_000_000,
-        };
-        self.verification_results_by_request_id
-            .insert(id.clone(), entry);
-
-        // Schedule automatic cleanup via yield-resume after ~200 blocks (~2min).
-        // The runtime will invoke clear_verification_result(request_id) later,
-        // so the entry remains available for polling until then.
-        let args = serde_json::to_vec(&json!({ "request_id": id })).unwrap_or_default();
-        // We don't need the data_id, so we use a dummy register index (0) and ignore its contents.
-        env::promise_yield_create(
-            "clear_verification_result",
-            &args,
-            Gas::from_tgas(8),
-            GasWeight(0),
-            0,
-        );
-    }
-
     #[private]
     pub fn on_email_verification_onchain_result(
         &mut self,
@@ -488,28 +495,7 @@ impl EmailDkimVerifier {
         request_id: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult {
-        tee_verify::on_email_verification_private_result(self, requested_by, request_id, result)
-    }
-
-    #[private]
-    pub fn clear_verification_result(&mut self, request_id: String) {
-        self.verification_results_by_request_id.remove(&request_id);
-    }
-
-    /// Private test-only helper used from near-workspaces integration tests.
-    /// Stores a dummy `VerificationResult` for the given `request_id` and
-    /// schedules automatic cleanup via `promise_yield_create`
-    #[private]
-    pub fn test_store_verification_result_with_yield(&mut self, request_id: String) {
-        let vr = VerificationResult {
-            verified: false,
-            account_id: String::new(),
-            new_public_key: String::new(),
-            from_address: String::new(),
-            email_timestamp_ms: None,
-            request_id: request_id.clone(),
-        };
-        self.store_verification_result(&request_id, &vr);
+        tee_verify::on_email_verification_private_result(requested_by, request_id, result)
     }
 }
 

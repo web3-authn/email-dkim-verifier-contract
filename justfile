@@ -4,6 +4,7 @@ default:
     @echo "  just deploy-dev  - Deploy contract to development"
     @echo "  just upgrade     - Upgrade contract in production"
     @echo "  just upgrade-dev - Upgrade contract in development"
+    @echo "  just migrate     - Migrate contract state after upgrade"
     @echo "  just request     - Call request_email_verification with sample DKIM email"
     @echo "  just set-outlayer-keys - Refresh worker public key in contract"
     @echo "  just set-outlayer-wasm - Set worker wasm URL + hash in contract (defaults to latest.json)"
@@ -30,6 +31,10 @@ upgrade:
 upgrade-dev:
     @echo "Upgrading contract in development..."
     sh ./scripts/upgrade-dev.sh
+
+migrate:
+    @echo "Migrating contract state..."
+    sh ./scripts/migrate.sh
 
 # Call request_email_verification with a sample DKIM email
 request:

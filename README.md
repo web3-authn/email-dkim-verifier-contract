@@ -1,6 +1,6 @@
 # Email DKIM Verifier Contract
 
-This repo contains a NEAR contract (`email-dkim-verifier-contract`) that uses yield/resume with [OutLayer](https://outlayer.fastnear.com/docs/getting-started) to run a WASI worker in a TEE. The worker fetches DKIM DNS TXT records **and verifies the DKIM signature inside the worker**, returning a summarized `VerificationResult` back on‑chain.
+This repo contains a NEAR contract (`email-dkim-verifier-contract`) that uses [OutLayer](https://outlayer.fastnear.com/docs/getting-started) to run a WASI worker in a TEE. The worker fetches DKIM DNS TXT records **and verifies the DKIM signature inside the worker**, returning a summarized `VerificationResult` back on‑chain.
 
 Used for email-based account recovery for tatchi.xyz accounts; other contracts call this one as a stateless global verifier.
 
@@ -41,7 +41,11 @@ After pushing a change to `main`:
    just upgrade  # existing contract
    # or: just deploy  # new contract
    ```
-3. Point the contract at the latest worker build:
+3. If this upgrade includes a state layout change, migrate once:
+   ```bash
+   just migrate
+   ```
+4. Point the contract at the latest worker build:
    ```bash
    just set-outlayer-wasm
    ```

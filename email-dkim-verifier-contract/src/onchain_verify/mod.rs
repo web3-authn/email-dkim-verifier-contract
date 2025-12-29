@@ -118,7 +118,7 @@ pub fn request_email_verification_onchain_inner(
 
 /// Internal helper: on-chain DKIM verification callback path.
 pub fn on_email_verification_onchain_result(
-    contract: &mut EmailDkimVerifier,
+    _contract: &mut EmailDkimVerifier,
     requested_by: AccountId,
     email_blob: String,
     result: Result<Option<serde_json::Value>, PromiseError>,
@@ -132,16 +132,7 @@ pub fn on_email_verification_onchain_result(
     let value = match result {
         Ok(Some(v)) => v,
         _ => {
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-                request_id: String::new(),
-            };
-            contract.store_verification_result(&request_id, &vr);
-            return vr;
+            return VerificationResult::failure(&request_id, "outlayer_execution_failed");
         }
     };
 
@@ -149,16 +140,7 @@ pub fn on_email_verification_onchain_result(
         Ok(r) => r,
         Err(e) => {
             env::log_str(&format!("Failed to parse worker response: {e}"));
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-                request_id: String::new(),
-            };
-            contract.store_verification_result(&request_id, &vr);
-            return vr;
+            return VerificationResult::failure(&request_id, "invalid_worker_response");
         }
     };
 
@@ -167,16 +149,13 @@ pub fn on_email_verification_onchain_result(
             "Unexpected worker method in on_email_verification_onchain_result: {}",
             worker_response.method
         ));
-        let vr = VerificationResult {
-            verified: false,
-            account_id: String::new(),
-            new_public_key: String::new(),
-            from_address: String::new(),
-            email_timestamp_ms: None,
-            request_id: String::new(),
-        };
-        contract.store_verification_result(&request_id, &vr);
-        return vr;
+        return VerificationResult::failure(
+            &request_id,
+            format!(
+            "unexpected_worker_method: {}",
+            worker_response.method
+            ),
+        );
     }
 
     let dns_params: DnsLookupParams =
@@ -184,61 +163,25 @@ pub fn on_email_verification_onchain_result(
             Ok(p) => p,
             Err(e) => {
                 env::log_str(&format!("Failed to parse {GET_DNS_RECORDS_METHOD} response: {e}"));
-                let vr = VerificationResult {
-                    verified: false,
-                    account_id: String::new(),
-                    new_public_key: String::new(),
-                    from_address: String::new(),
-                    email_timestamp_ms: None,
-                    request_id: String::new(),
-                };
-                contract.store_verification_result(&request_id, &vr);
-                return vr;
+                return VerificationResult::failure(&request_id, "invalid_dns_response");
             }
         };
 
     if let Some(err) = dns_params.error.as_deref() {
         env::log_str(&format!("DKIM DNS fetch error: {err}"));
-        let vr = VerificationResult {
-            verified: false,
-            account_id: String::new(),
-            new_public_key: String::new(),
-            from_address: String::new(),
-            email_timestamp_ms: None,
-            request_id: String::new(),
-        };
-        contract.store_verification_result(&request_id, &vr);
-        return vr;
+        return VerificationResult::failure(&request_id, format!("dns_error: {err}"));
     }
 
     let record_strings = dns_params.records;
 
     if record_strings.is_empty() {
-        let vr = VerificationResult {
-            verified: false,
-            account_id: String::new(),
-            new_public_key: String::new(),
-            from_address: String::new(),
-            email_timestamp_ms: None,
-            request_id: String::new(),
-        };
-        contract.store_verification_result(&request_id, &vr);
-        return vr;
+        return VerificationResult::failure(&request_id, "dns_records_empty");
     }
 
     let verified = dkim::verify_dkim(&email_blob, &record_strings);
 
     if !verified {
-        let vr = VerificationResult {
-            verified: false,
-            account_id: String::new(),
-            new_public_key: String::new(),
-            from_address: String::new(),
-            email_timestamp_ms: None,
-            request_id: String::new(),
-        };
-        contract.store_verification_result(&request_id, &vr);
-        return vr;
+        return VerificationResult::failure(&request_id, "dkim_verification_failed");
     }
 
     let subject = extract_header_value(&email_blob, "Subject");
@@ -269,7 +212,7 @@ pub fn on_email_verification_onchain_result(
         from_address,
         email_timestamp_ms,
         request_id: request_id.clone(),
+        error: None,
     };
-    contract.store_verification_result(&request_id, &vr);
     vr
 }

@@ -141,25 +141,16 @@ pub fn request_email_verification_private_inner(
 
 /// Internal helper: encrypted/TEE DKIM verification callback path.
 pub fn on_email_verification_private_result(
-    contract: &mut EmailDkimVerifier,
     requested_by: AccountId,
     request_id: String,
     result: Result<Option<serde_json::Value>, PromiseError>,
 ) -> VerificationResult {
     let _ = requested_by;
+
     let value = match result {
         Ok(Some(v)) => v,
         _ => {
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-                request_id: request_id.clone(),
-            };
-            contract.store_verification_result(&request_id, &vr);
-            return vr;
+            return VerificationResult::failure(&request_id, "outlayer_execution_failed");
         }
     };
 
@@ -167,16 +158,7 @@ pub fn on_email_verification_private_result(
         Ok(r) => r,
         Err(e) => {
             env::log_str(&format!("Failed to parse worker response (private): {e}"));
-            let vr = VerificationResult {
-                verified: false,
-                account_id: String::new(),
-                new_public_key: String::new(),
-                from_address: String::new(),
-                email_timestamp_ms: None,
-                request_id: request_id.clone(),
-            };
-            contract.store_verification_result(&request_id, &vr);
-            return vr;
+            return VerificationResult::failure(&request_id, "invalid_worker_response");
         }
     };
 
@@ -185,16 +167,13 @@ pub fn on_email_verification_private_result(
             "Unexpected worker method in on_email_verification_private_result: {}",
             worker_response.method
         ));
-        let vr = VerificationResult {
-            verified: false,
-            account_id: String::new(),
-            new_public_key: String::new(),
-            from_address: String::new(),
-            email_timestamp_ms: None,
-            request_id: request_id.clone(),
-        };
-        contract.store_verification_result(&request_id, &vr);
-        return vr;
+        return VerificationResult::failure(
+            &request_id,
+            format!(
+                "unexpected_worker_method: {}",
+                worker_response.method
+            ),
+        );
     }
 
     let verify_params: VerifyEncryptedEmailResponse =
@@ -202,16 +181,7 @@ pub fn on_email_verification_private_result(
             Ok(p) => p,
             Err(e) => {
                 env::log_str(&format!("Failed to parse {VERIFY_ENCRYPTED_EMAIL_METHOD} response: {e}"));
-                let vr = VerificationResult {
-                    verified: false,
-                    account_id: String::new(),
-                    new_public_key: String::new(),
-                    from_address: String::new(),
-                    email_timestamp_ms: None,
-                    request_id: request_id.clone(),
-                };
-                contract.store_verification_result(&request_id, &vr);
-                return vr;
+                return VerificationResult::failure(&request_id, "invalid_verify_response");
             }
         };
 
@@ -232,7 +202,7 @@ pub fn on_email_verification_private_result(
         from_address: verify_params.from_address,
         email_timestamp_ms: verify_params.email_timestamp_ms,
         request_id: final_request_id.clone(),
+        error: verify_params.error.clone(),
     };
-    contract.store_verification_result(&final_request_id, &vr);
     vr
 }
