@@ -63,26 +63,6 @@ impl VerificationResult {
     }
 }
 
-mod legacy_state_v1 {
-    use super::VerificationResult;
-    use borsh::{BorshDeserialize, BorshSerialize};
-    use near_sdk::store::IterableMap;
-
-    #[derive(BorshSerialize, BorshDeserialize)]
-    pub struct StoredVerificationResult {
-        pub result: VerificationResult,
-        pub created_at_ms: u64,
-    }
-
-    #[derive(BorshDeserialize)]
-    pub struct EmailDkimVerifierV1 {
-        pub outlayer_encryption_public_key: String,
-        pub _verification_results_by_request_id: IterableMap<String, StoredVerificationResult>,
-        pub outlayer_worker_wasm_url: String,
-        pub outlayer_worker_wasm_hash: String,
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "near_sdk::serde")]
 pub struct OutlayerWorkerWasmSource {
@@ -214,24 +194,6 @@ impl EmailDkimVerifier {
             outlayer_encryption_public_key: OUTLAYER_ENCRYPTION_PUBKEY.to_string(),
             outlayer_worker_wasm_url: String::new(),
             outlayer_worker_wasm_hash: String::new(),
-        }
-    }
-
-    #[init(ignore_state)]
-    pub fn migrate() -> Self {
-        assert_eq!(
-            env::predecessor_account_id(),
-            env::current_account_id(),
-            "Only the contract owner can migrate"
-        );
-
-        let old: legacy_state_v1::EmailDkimVerifierV1 =
-            env::state_read().expect("Old state not found");
-
-        Self {
-            outlayer_encryption_public_key: old.outlayer_encryption_public_key,
-            outlayer_worker_wasm_url: old.outlayer_worker_wasm_url,
-            outlayer_worker_wasm_hash: old.outlayer_worker_wasm_hash,
         }
     }
 

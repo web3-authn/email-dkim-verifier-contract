@@ -41,11 +41,7 @@ After pushing a change to `main`:
    just upgrade  # existing contract
    # or: just deploy  # new contract
    ```
-3. If this upgrade includes a state layout change, migrate once:
-   ```bash
-   just migrate
-   ```
-4. Point the contract at the latest worker build:
+3. Point the contract at the latest worker build:
    ```bash
    just set-outlayer-wasm
    ```
