@@ -274,7 +274,7 @@ impl EmailDkimVerifier {
         };
 
         let params = ExecutionParams {
-            force_rebuild: true,
+            force_rebuild: false,
             compile_only: false,
             store_on_fastfs: false,
         };
