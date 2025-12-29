@@ -13,10 +13,6 @@ use schemars::JsonSchema;
 use tee_verify::AeadContext;
 
 const OUTLAYER_CONTRACT_ID: &str = "outlayer.testnet";
-// Prebuilt worker WASM hosted via FastFS or another static host.
-const OUTLAYER_WORKER_WASM_URL: &str = "";
-// SHA-256 hex of the worker WASM (matches the hosted binary).
-const OUTLAYER_WORKER_WASM_HASH: &str = "";
 // Default public encryption key for the Outlayer worker (can be overridden via contract state).
 const OUTLAYER_ENCRYPTION_PUBKEY: &str = "";
 // Minimum deposit forwarded to OutLayer (0.01 NEAR).
@@ -66,12 +62,6 @@ pub struct StoredVerificationResult {
 pub struct OutlayerWorkerWasmSource {
     pub url: String,
     pub hash: String,
-}
-
-#[derive(BorshDeserialize)]
-struct EmailDkimVerifierV1 {
-    outlayer_encryption_public_key: String,
-    verification_results_by_request_id: IterableMap<String, StoredVerificationResult>,
 }
 
 #[derive(near_sdk::serde::Serialize, near_sdk::serde::Deserialize)]
@@ -149,6 +139,7 @@ trait ExtEmailDkimVerifier {
     fn on_email_verification_private_result(
         &mut self,
         requested_by: AccountId,
+        request_id: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult;
 
@@ -198,25 +189,8 @@ impl EmailDkimVerifier {
             verification_results_by_request_id: IterableMap::new(
                 StorageKey::VerificationResultsByRequestId,
             ),
-            outlayer_worker_wasm_url: OUTLAYER_WORKER_WASM_URL.to_string(),
-            outlayer_worker_wasm_hash: OUTLAYER_WORKER_WASM_HASH.to_string(),
-        }
-    }
-
-    #[init(ignore_state)]
-    pub fn migrate() -> Self {
-        assert_eq!(
-            env::predecessor_account_id(),
-            env::current_account_id(),
-            "Only the contract owner can migrate EmailDkimVerifier"
-        );
-        let old: EmailDkimVerifierV1 = env::state_read()
-            .expect("EmailDkimVerifier state is missing; cannot migrate");
-        Self {
-            outlayer_encryption_public_key: old.outlayer_encryption_public_key,
-            verification_results_by_request_id: old.verification_results_by_request_id,
-            outlayer_worker_wasm_url: OUTLAYER_WORKER_WASM_URL.to_string(),
-            outlayer_worker_wasm_hash: OUTLAYER_WORKER_WASM_HASH.to_string(),
+            outlayer_worker_wasm_url: String::new(),
+            outlayer_worker_wasm_hash: String::new(),
         }
     }
 
@@ -358,18 +332,10 @@ impl EmailDkimVerifier {
     }
 
     pub(crate) fn resolve_outlayer_worker_wasm_source(&self) -> OutlayerWorkerWasmSource {
-        let url = if self.outlayer_worker_wasm_url.trim().is_empty() {
-            OUTLAYER_WORKER_WASM_URL.to_string()
-        } else {
-            self.outlayer_worker_wasm_url.clone()
-        };
-        let hash = if self.outlayer_worker_wasm_hash.trim().is_empty() {
-            OUTLAYER_WORKER_WASM_HASH.to_string()
-        } else {
-            self.outlayer_worker_wasm_hash.clone()
-        };
+        let url = self.outlayer_worker_wasm_url.trim().to_string();
+        let hash = self.outlayer_worker_wasm_hash.trim().to_string();
 
-        if url.trim().is_empty() || hash.trim().is_empty() {
+        if url.is_empty() || hash.is_empty() {
             env::panic_str("Outlayer worker wasm source is not configured");
         }
 
@@ -390,6 +356,7 @@ impl EmailDkimVerifier {
         email_blob: Option<String>,
         encrypted_email_blob: Option<serde_json::Value>,
         aead_context: Option<AeadContext>,
+        request_id: Option<String>,
     ) -> Promise {
         match (email_blob, encrypted_email_blob, aead_context) {
             (Some(email_blob), None, _) => onchain_verify::request_email_verification_onchain_inner(
@@ -403,6 +370,7 @@ impl EmailDkimVerifier {
                     payer_account_id,
                     encrypted_email_blob,
                     aead_context,
+                    request_id,
                 )
             }
             (Some(_), Some(_), _) => env::panic_str(
@@ -433,12 +401,14 @@ impl EmailDkimVerifier {
         payer_account_id: AccountId,
         encrypted_email_blob: serde_json::Value,
         aead_context: AeadContext,
+        request_id: Option<String>,
     ) -> Promise {
         tee_verify::request_email_verification_private_inner(
             self,
             payer_account_id,
             encrypted_email_blob,
             aead_context,
+            request_id,
         )
     }
 
@@ -504,9 +474,10 @@ impl EmailDkimVerifier {
     pub fn on_email_verification_private_result(
         &mut self,
         requested_by: AccountId,
+        request_id: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult {
-        tee_verify::on_email_verification_private_result(self, requested_by, result)
+        tee_verify::on_email_verification_private_result(self, requested_by, request_id, result)
     }
 
     #[private]

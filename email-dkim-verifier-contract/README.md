@@ -27,6 +27,7 @@ pub fn request_email_verification(
     email_blob: Option<String>,
     encrypted_email_blob: Option<serde_json::Value>,
     aead_context: Option<AeadContext>,
+    request_id: Option<String>,
 ) -> Promise
 ```
 
@@ -57,6 +58,11 @@ pub fn request_email_verification(
         pub payer_account_id: String,
     }
     ```
+
+- `request_id`
+  Optional request ID hint used for frontend polling.
+  - In on‑chain mode, the contract derives `request_id` from the email Subject when present.
+  - In encrypted mode, pass `request_id` so the contract can store a terminal failure result even if the worker cannot decrypt/parse the Subject (e.g. wrong AEAD context / Outlayer execution failure).
 
 - Attached deposit
   - Must attach at least `MIN_DEPOSIT` (currently `0.01 NEAR`):
@@ -94,6 +100,7 @@ pub fn request_email_verification(
     pub fn on_email_verification_private_result(
         &mut self,
         requested_by: AccountId,
+        request_id: String,
         #[callback_result] result: Result<Option<serde_json::Value>, PromiseError>,
     ) -> VerificationResult
     ```
@@ -129,6 +136,7 @@ For email‑recovery flows, the contract supports a short‑lived `request_id` e
   - Parses `REQUEST_ID` from the Subject if present.
   - Stores the `VerificationResult` in an internal map keyed by `request_id`.
   - Schedules a `clear_verification_result(request_id)` call via yield‑resume so the entry is automatically deleted after ~200 blocks.
+- For encrypted mode, passing `request_id` to `request_email_verification(...)` ensures the contract can still write a terminal failure result for polling even if Outlayer fails before the worker returns a parsed `request_id`.
 - Frontend API:
   - Call `get_verification_result(request_id: String) -> Option<VerificationResult>`.
   - Interpret the response as:
@@ -229,5 +237,5 @@ just request
 `scripts/request_email_verification.sh`:
 
 - Loads `email-dkim-verifier-contract/tests/data/gmail_reset_full.eml` as `email_blob`.
-- Calls `request_email_verification(payer_account_id, email_blob=Some(...), encrypted_email_blob=None, aead_context=None)` on `$CONTRACT_ID`.
+- Calls `request_email_verification(payer_account_id, email_blob=Some(...), encrypted_email_blob=None, aead_context=None, request_id=None)` on `$CONTRACT_ID`.
 - Attaches enough gas and deposit for OutLayer execution.

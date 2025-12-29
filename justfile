@@ -8,7 +8,6 @@ default:
     @echo "  just set-outlayer-keys - Refresh worker public key in contract"
     @echo "  just set-outlayer-wasm - Set worker wasm URL + hash in contract"
     @echo "  just set-outlayer-wasm-from-r2 - Set worker wasm URL + hash by downloading wasm from R2"
-    @echo "  just migrate     - Run contract state migration"
     @echo "  just vite-dev    - Run Vite example app"
     @echo ""
     @echo "Make sure to set up your .env file before running any commands."
@@ -49,10 +48,6 @@ set-outlayer-wasm:
 set-outlayer-wasm-from-r2:
     @echo "Setting Outlayer worker wasm source (hash computed from R2 object)..."
     sh ./scripts/set_outlayer_worker_wasm_from_r2_object.sh
-
-migrate:
-    @echo "Migrating contract state..."
-    sh ./scripts/migrate.sh
 
 test:
     @echo "cd email-dkim-verifier-contract && cargo test --features unit-testing"

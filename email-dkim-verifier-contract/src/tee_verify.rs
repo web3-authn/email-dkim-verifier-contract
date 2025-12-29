@@ -39,6 +39,7 @@ pub fn request_email_verification_private_inner(
     payer_account_id: AccountId,
     encrypted_email_blob: serde_json::Value,
     aead_context: AeadContext,
+    request_id: Option<String>,
 ) -> Promise {
     let caller = env::predecessor_account_id();
     let attached = env::attached_deposit().as_yoctonear();
@@ -63,6 +64,7 @@ pub fn request_email_verification_private_inner(
     // after serializing it with serde_json.
     // Expected keys (alphabetical for canonical AAD):
     //   account_id, network_id, payer_account_id.
+    let request_id = request_id.unwrap_or_default().trim().to_string();
     let input_args = OutlayerInputArgs::new(
         VERIFY_ENCRYPTED_EMAIL_METHOD,
         serde_json::json!({
@@ -72,7 +74,8 @@ pub fn request_email_verification_private_inner(
                 "account_id": aead_context.account_id,
                 "network_id": aead_context.network_id,
                 "payer_account_id": aead_context.payer_account_id,
-            })
+            }),
+            "request_id": request_id.clone(),
         }),
     );
     let input_payload = input_args.to_json_string();
@@ -126,7 +129,7 @@ pub fn request_email_verification_private_inner(
         .then(
             ext_self::ext(env::current_account_id())
                 .with_unused_gas_weight(1)
-                .on_email_verification_private_result(caller),
+                .on_email_verification_private_result(caller, request_id),
         )
 }
 
@@ -134,6 +137,7 @@ pub fn request_email_verification_private_inner(
 pub fn on_email_verification_private_result(
     contract: &mut EmailDkimVerifier,
     requested_by: AccountId,
+    request_id: String,
     result: Result<Option<serde_json::Value>, PromiseError>,
 ) -> VerificationResult {
     let _ = requested_by;
@@ -146,8 +150,9 @@ pub fn on_email_verification_private_result(
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
-                request_id: String::new(),
+                request_id: request_id.clone(),
             };
+            contract.store_verification_result(&request_id, &vr);
             return vr;
         }
     };
@@ -162,8 +167,9 @@ pub fn on_email_verification_private_result(
                 new_public_key: String::new(),
                 from_address: String::new(),
                 email_timestamp_ms: None,
-                request_id: String::new(),
+                request_id: request_id.clone(),
             };
+            contract.store_verification_result(&request_id, &vr);
             return vr;
         }
     };
@@ -179,8 +185,9 @@ pub fn on_email_verification_private_result(
             new_public_key: String::new(),
             from_address: String::new(),
             email_timestamp_ms: None,
-            request_id: String::new(),
+            request_id: request_id.clone(),
         };
+        contract.store_verification_result(&request_id, &vr);
         return vr;
     }
 
@@ -195,8 +202,9 @@ pub fn on_email_verification_private_result(
                     new_public_key: String::new(),
                     from_address: String::new(),
                     email_timestamp_ms: None,
-                    request_id: String::new(),
+                    request_id: request_id.clone(),
                 };
+                contract.store_verification_result(&request_id, &vr);
                 return vr;
             }
         };
@@ -205,14 +213,20 @@ pub fn on_email_verification_private_result(
         env::log_str(&format!("{VERIFY_ENCRYPTED_EMAIL_METHOD} worker error: {err}"));
     }
 
+    let final_request_id = if verify_params.request_id.trim().is_empty() {
+        request_id
+    } else {
+        verify_params.request_id.clone()
+    };
+
     let vr = VerificationResult {
         verified: verify_params.verified,
         account_id: verify_params.account_id,
         new_public_key: verify_params.new_public_key,
         from_address: verify_params.from_address,
         email_timestamp_ms: verify_params.email_timestamp_ms,
-        request_id: verify_params.request_id.clone(),
+        request_id: final_request_id.clone(),
     };
-    contract.store_verification_result(&verify_params.request_id, &vr);
+    contract.store_verification_result(&final_request_id, &vr);
     vr
 }

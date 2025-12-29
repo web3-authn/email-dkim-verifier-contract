@@ -31,6 +31,22 @@ Used for email-based account recovery for tatchi.xyz accounts; other contracts c
   just upgrade
   ```
 
+## Deploy / upgrade flow (main)
+
+After pushing a change to `main`:
+
+1. Wait for GitHub Actions to finish publishing the worker wasm + `.sha256` to R2 (workflow: “Publish Outlayer Worker (R2)”).
+2. Copy the “Public URL” for the `.wasm` from the workflow summary and set it in your local `.env` as `OUTLAYER_WORKER_WASM_URL=...`.
+3. Upgrade (or deploy) the contract:
+   ```bash
+   just upgrade  # existing contract
+   # or: just deploy  # new contract
+   ```
+4. Point the contract at the new worker build (pulls `${OUTLAYER_WORKER_WASM_URL}.sha256` from R2):
+   ```bash
+   just set-outlayer-wasm
+   ```
+
 ## Outlayer worker WASM publishing (R2)
 
 The Outlayer worker is built and uploaded by CI. Each run uploads:

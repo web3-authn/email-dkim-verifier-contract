@@ -105,7 +105,8 @@ Request params:
   "context": {
     // Arbitrary JSON used as AEAD associated data (AAD),
     // typically includes `account_id`, `network_id`, `payer_account_id`.
-  }
+  },
+  "request_id": "optional polling request id (echoed back on errors)"
 }
 ```
 
@@ -128,6 +129,7 @@ Response params (on success):
   "new_public_key": "<ed25519:... or \"\">",
   "from_address": "normalized from address",
   "email_timestamp_ms": 1730000000000,
+  "request_id": "123ABC",
   "error": null
 }
 ```

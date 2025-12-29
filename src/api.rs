@@ -174,18 +174,32 @@ fn handle_verify_encrypted_dkim(args: Value) -> ResponseType {
         encrypted_email_blob: EncryptedEmailEnvelope,
         #[serde(default)]
         context: Value, // forwarded directly from contract `args.context` as worker `context` (AEAD AAD)
+        #[serde(default)]
+        request_id: String,
     }
+
+    let request_id_hint = args
+        .get("request_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
 
     let args_parsed: Result<VerifyArgs, _> = serde_json::from_value(args);
     let verify_args = match args_parsed {
         Ok(a) => a,
         Err(e) => {
             return ResponseType::error(
-                String::new(),
+                request_id_hint,
                 format!("invalid {VERIFY_ENCRYPTED_EMAIL_METHOD} args: {e}"),
                 None,
             );
         }
+    };
+
+    let request_id_hint = if verify_args.request_id.trim().is_empty() {
+        request_id_hint
+    } else {
+        verify_args.request_id.clone()
     };
 
     // Pass the JSON `context` object to crypto; it will be serialized with
@@ -198,7 +212,7 @@ fn handle_verify_encrypted_dkim(args: Value) -> ResponseType {
         Ok(e) => e,
         Err(e) => {
             return ResponseType::error(
-                String::new(),
+                request_id_hint,
                 e,
                 Some(verify_args.context),
             );
@@ -206,7 +220,15 @@ fn handle_verify_encrypted_dkim(args: Value) -> ResponseType {
     };
 
     let subject = extract_header_value(&decrypted_email, "Subject");
-    let request_id = subject.as_deref().and_then(parse_recover_request_id).unwrap_or_default();
+    let request_id_from_email = subject
+        .as_deref()
+        .and_then(parse_recover_request_id)
+        .unwrap_or_default();
+    let request_id = if request_id_from_email.trim().is_empty() {
+        request_id_hint
+    } else {
+        request_id_from_email
+    };
 
     let (selector, domain) = match extract_dkim_selector_and_domain(&decrypted_email) {
         Ok(v) => v,
