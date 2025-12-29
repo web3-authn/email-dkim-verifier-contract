@@ -64,21 +64,27 @@ pub fn request_email_verification_onchain_inner(
     let input_payload = input_args.to_json_string();
 
     let source = contract.resolve_outlayer_worker_wasm_source();
-    let code_source = json!({
-        "WasmUrl": {
-            "url": source.url,
-            "hash": source.hash,
-            "build_target": "wasm32-wasip2"
-        }
-    });
-
-    // let code_source = json!({
-    //     "GitHub": {
-    //         "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
-    //         "commit": "main",
-    //         "build_target": "wasm32-wasip2"
-    //     }
-    // });
+    let code_source = if !source.url.is_empty() && !source.hash.is_empty() {
+        json!({
+            "WasmUrl": {
+                "url": source.url,
+                "hash": source.hash,
+                "build_target": "wasm32-wasip2"
+            }
+        })
+    } else if source.url.is_empty() && source.hash.is_empty() {
+        json!({
+            "GitHub": {
+                "repo": "github.com/web3-authn/email-dkim-verifier-contract",
+                "commit": "main",
+                "build_target": "wasm32-wasip2"
+            }
+        })
+    } else {
+        env::panic_str(
+            "Outlayer worker wasm source is partially configured; set both url + hash or leave both empty to use GitHub source",
+        );
+    };
 
     let resource_limits = json!({
         "max_instructions": 10_000_000_000u64,

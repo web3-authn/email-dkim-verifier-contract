@@ -78,6 +78,7 @@ For local testing (outside Outlayer), the worker also accepts `OUTLAYER_WORKER_S
 ### Create / rotate the protected secret + refresh contract public key
 
 1. In the Outlayer [Secrets Management](https://outlayer.fastnear.com/secrets) page, create a protected secret `PROTECTED_OUTLAYER_WORKER_SK_SEED_HEX32` with type **"Hex 32 bytes (64 chars)"**. Outlayer will generate the value for you.
+  - Important: secrets are scoped to the worker *code source*. If you’re using `WasmUrl` builds (this repo), you must create the secret under the **WasmHash** scope for the current worker WASM hash; this is separate from the **GitHub Repository** secrets scope.
   - leave `Branch` empty
   - set `profile` to `main` (or whatever is set in `lib.rs`: `SECRETS_PROFILE = "main"`)
 2. Restart/redeploy the worker so it picks up the updated secret.

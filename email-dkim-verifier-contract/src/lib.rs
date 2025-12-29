@@ -241,21 +241,27 @@ impl EmailDkimVerifier {
             "Attach at least 0.01 NEAR for Outlayer execution");
 
         let source = self.resolve_outlayer_worker_wasm_source();
-        let code_source = serde_json::json!({
-            "WasmUrl": {
-                "url": source.url,
-                "hash": source.hash,
-                "build_target": "wasm32-wasip2",
-            }
-        });
-
-        // let code_source = serde_json::json!({
-        //     "GitHub": {
-        //         "repo": "github.com/web3-authn/email-dkim-verifier-contract",
-        //         "commit": "main",
-        //         "build_target": "wasm32-wasip2",
-        //     }
-        // });
+        let code_source = if !source.url.is_empty() && !source.hash.is_empty() {
+            serde_json::json!({
+                "WasmUrl": {
+                    "url": source.url,
+                    "hash": source.hash,
+                    "build_target": "wasm32-wasip2",
+                }
+            })
+        } else if source.url.is_empty() && source.hash.is_empty() {
+            serde_json::json!({
+                "GitHub": {
+                    "repo": "github.com/web3-authn/email-dkim-verifier-contract",
+                    "commit": "main",
+                    "build_target": "wasm32-wasip2",
+                }
+            })
+        } else {
+            env::panic_str(
+                "Outlayer worker wasm source is partially configured; set both url + hash or leave both empty to use GitHub source",
+            );
+        };
 
         let resource_limits = serde_json::json!({
             "max_instructions": 10_000_000_000u64,
@@ -336,7 +342,12 @@ impl EmailDkimVerifier {
         let hash = self.outlayer_worker_wasm_hash.trim().to_string();
 
         if url.is_empty() || hash.is_empty() {
-            env::panic_str("Outlayer worker wasm source is not configured");
+            env::log_str(&format!(
+                "Outlayer worker wasm source is not fully configured: url='{url}', hash='{hash}'"
+            ));
+        }
+        if url.is_empty() && hash.is_empty() {
+            env::log_str("Outlayer worker wasm source unset; defaulting Outlayer code_source to GitHub");
         }
 
         OutlayerWorkerWasmSource { url, hash }
