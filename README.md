@@ -35,14 +35,13 @@ Used for email-based account recovery for tatchi.xyz accounts; other contracts c
 
 After pushing a change to `main`:
 
-1. Wait for GitHub Actions to finish publishing the worker wasm + `.sha256` to R2 (workflow: “Publish Outlayer Worker (R2)”).
-2. Copy the “Public URL” for the `.wasm` from the workflow summary and set it in your local `.env` as `OUTLAYER_WORKER_WASM_URL=...`.
-3. Upgrade (or deploy) the contract:
+1. Wait for GitHub Actions to finish publishing the worker wasm bundle to R2 (workflow: “Publish Outlayer Worker (R2)”).
+2. Upgrade (or deploy) the contract:
    ```bash
    just upgrade  # existing contract
    # or: just deploy  # new contract
    ```
-4. Point the contract at the new worker build (pulls `${OUTLAYER_WORKER_WASM_URL}.sha256` from R2):
+3. Point the contract at the latest worker build:
    ```bash
    just set-outlayer-wasm
    ```
@@ -53,19 +52,18 @@ The Outlayer worker is built and uploaded by CI. Each run uploads:
 
 - `workers/email-dkim/<sha>.wasm`
 - `workers/email-dkim/<sha>.wasm.sha256`
+- `workers/email-dkim/latest.wasm`
+- `workers/email-dkim/latest.wasm.sha256`
+- `workers/email-dkim/latest.json` (manifest with timestamp + commit)
 
 To point the contract at a new worker build:
 
-1. Set `OUTLAYER_WORKER_WASM_URL` in `.env` to the public R2 URL for the `.wasm`.
-2. Run:
+1. Run:
    ```bash
    just set-outlayer-wasm
    ```
-   This pulls the `.sha256` from R2 and stores the URL + hash in contract state.
-3. Optional integrity check: download the wasm and compute the hash locally:
-   ```bash
-   just set-outlayer-wasm-from-r2
-   ```
+   This uses `OUTLAYER_WORKER_WASM_URL` if set; otherwise it fetches `latest.json`.
+   It downloads the wasm, computes SHA‑256, optionally verifies it against the `.sha256` file, and stores URL + hash in contract state.
 
 ## Outlayer worker key management
 

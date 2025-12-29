@@ -36,13 +36,9 @@ Optional variable:
 
 ## Updating the contract
 
-1. Set `OUTLAYER_WORKER_WASM_URL` in `.env` to the public URL of the `.wasm`.
-2. Run:
+1. Run:
    ```bash
    just set-outlayer-wasm
    ```
-   This fetches the `.sha256` from R2 and updates contract state.
-3. Optional: compute the hash from the downloaded wasm instead:
-   ```bash
-   just set-outlayer-wasm-from-r2
-   ```
+   This uses `OUTLAYER_WORKER_WASM_URL` if set; otherwise it fetches `latest.json`.
+   It downloads the wasm, computes SHA‑256, optionally verifies it against the `.sha256` file, and updates contract state.

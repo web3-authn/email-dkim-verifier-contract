@@ -27,7 +27,7 @@ EMAIL_BLOB="$(cat email-dkim-verifier-contract/tests/data/gmail_reset_full.eml)"
 JSON_ARGS=$(jq -n \
   --arg payer_account_id "$SIGNER_ID" \
   --arg email_blob "$EMAIL_BLOB" \
-  '{payer_account_id: $payer_account_id, email_blob: $email_blob, encrypted_email_blob: null, aead_context: null}')
+  '{payer_account_id: $payer_account_id, email_blob: $email_blob, encrypted_email_blob: null, aead_context: null, request_id: null}')
 
 near contract call-function as-transaction "$CONTRACT_ID" request_email_verification \
   json-args "$JSON_ARGS" \

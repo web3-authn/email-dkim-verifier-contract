@@ -84,16 +84,103 @@ jobs:
             --upload-file "worker-build/dist/email-dkim-verifier-contract.wasm.sha256" \
             "${OBJECT_URL}"
 
+      - name: Publish latest.wasm pointer
+        run: |
+          OBJECT_KEY="${OBJECT_KEY#/}"
+          DIR="$(dirname "${OBJECT_KEY}")"
+          LATEST_KEY="${DIR}/latest.wasm"
+          BUCKET_BASE_URL="${R2_ENDPOINT%/}"
+          if [[ "${BUCKET_BASE_URL}" != */"${R2_BUCKET}" ]]; then
+            BUCKET_BASE_URL="${BUCKET_BASE_URL}/${R2_BUCKET}"
+          fi
+          OBJECT_URL="${BUCKET_BASE_URL%/}/${LATEST_KEY}"
+          curl -fSs --retry 3 --retry-delay 2 \
+            --aws-sigv4 "aws:amz:auto:s3" \
+            --user "${R2_ACCESS_KEY_ID}:${R2_SECRET_ACCESS_KEY}" \
+            -H "Content-Type: application/wasm" \
+            -H "Cache-Control: public, max-age=60" \
+            --upload-file "worker-build/dist/email-dkim-verifier-contract.wasm" \
+            "${OBJECT_URL}"
+
+      - name: Publish latest.wasm.sha256 pointer
+        run: |
+          OBJECT_KEY="${OBJECT_KEY#/}"
+          DIR="$(dirname "${OBJECT_KEY}")"
+          LATEST_KEY="${DIR}/latest.wasm.sha256"
+          BUCKET_BASE_URL="${R2_ENDPOINT%/}"
+          if [[ "${BUCKET_BASE_URL}" != */"${R2_BUCKET}" ]]; then
+            BUCKET_BASE_URL="${BUCKET_BASE_URL}/${R2_BUCKET}"
+          fi
+          OBJECT_URL="${BUCKET_BASE_URL%/}/${LATEST_KEY}"
+          curl -fSs --retry 3 --retry-delay 2 \
+            --aws-sigv4 "aws:amz:auto:s3" \
+            --user "${R2_ACCESS_KEY_ID}:${R2_SECRET_ACCESS_KEY}" \
+            -H "Content-Type: text/plain" \
+            -H "Cache-Control: public, max-age=60" \
+            --upload-file "worker-build/dist/email-dkim-verifier-contract.wasm.sha256" \
+            "${OBJECT_URL}"
+
+      - name: Publish latest.json manifest
+        run: |
+          OBJECT_KEY="${OBJECT_KEY#/}"
+          DIR="$(dirname "${OBJECT_KEY}")"
+          HASH="$(cat worker-build/dist/email-dkim-verifier-contract.wasm.sha256)"
+          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          WASM_URL=""
+          SHA_URL=""
+          LATEST_WASM_URL=""
+          LATEST_SHA_URL=""
+          if [[ -n "${R2_PUBLIC_BASE_URL:-}" ]]; then
+            WASM_URL="${R2_PUBLIC_BASE_URL%/}/${OBJECT_KEY}"
+            SHA_URL="${WASM_URL}.sha256"
+            LATEST_WASM_URL="${R2_PUBLIC_BASE_URL%/}/${DIR}/latest.wasm"
+            LATEST_SHA_URL="${R2_PUBLIC_BASE_URL%/}/${DIR}/latest.wasm.sha256"
+          fi
+
+          jq -n \
+            --arg built_at "${BUILT_AT}" \
+            --arg commit_sha "${GITHUB_SHA}" \
+            --arg object_key "${OBJECT_KEY}" \
+            --arg sha256 "${HASH}" \
+            --arg wasm_url "${WASM_URL}" \
+            --arg sha256_url "${SHA_URL}" \
+            --arg latest_wasm_url "${LATEST_WASM_URL}" \
+            --arg latest_sha256_url "${LATEST_SHA_URL}" \
+            '{built_at: $built_at, commit_sha: $commit_sha, object_key: $object_key, sha256: $sha256, wasm_url: $wasm_url, sha256_url: $sha256_url, latest_wasm_url: $latest_wasm_url, latest_sha256_url: $latest_sha256_url}' \
+            > worker-build/dist/latest.json
+
+          BUCKET_BASE_URL="${R2_ENDPOINT%/}"
+          if [[ "${BUCKET_BASE_URL}" != */"${R2_BUCKET}" ]]; then
+            BUCKET_BASE_URL="${BUCKET_BASE_URL}/${R2_BUCKET}"
+          fi
+          OBJECT_URL="${BUCKET_BASE_URL%/}/${DIR}/latest.json"
+          curl -fSs --retry 3 --retry-delay 2 \
+            --aws-sigv4 "aws:amz:auto:s3" \
+            --user "${R2_ACCESS_KEY_ID}:${R2_SECRET_ACCESS_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Cache-Control: public, max-age=60" \
+            --upload-file "worker-build/dist/latest.json" \
+            "${OBJECT_URL}"
+
       - name: Publish summary
         run: |
           OBJECT_KEY="${OBJECT_KEY#/}"
+          DIR="$(dirname "${OBJECT_KEY}")"
           HASH="$(cat worker-build/dist/email-dkim-verifier-contract.wasm.sha256)"
+          BUILT_AT="$(jq -r '.built_at' worker-build/dist/latest.json 2>/dev/null || true)"
           {
             echo "### Outlayer worker wasm";
             echo "- R2 object: s3://${R2_BUCKET}/${OBJECT_KEY}";
             if [[ -n "${R2_PUBLIC_BASE_URL:-}" ]]; then
               echo "- Public URL: ${R2_PUBLIC_BASE_URL%/}/${OBJECT_KEY}";
               echo "- SHA-256 URL: ${R2_PUBLIC_BASE_URL%/}/${OBJECT_KEY}.sha256";
+              echo "- Latest URL: ${R2_PUBLIC_BASE_URL%/}/${DIR}/latest.wasm";
+              echo "- Latest SHA-256 URL: ${R2_PUBLIC_BASE_URL%/}/${DIR}/latest.wasm.sha256";
+              echo "- Latest manifest: ${R2_PUBLIC_BASE_URL%/}/${DIR}/latest.json";
+            fi
+            if [[ -n "${BUILT_AT}" ]]; then
+              echo "- Built at: ${BUILT_AT}";
+              echo "- Commit: ${GITHUB_SHA}";
             fi
             echo "- SHA-256: ${HASH}";
           } >> "${GITHUB_STEP_SUMMARY}"
