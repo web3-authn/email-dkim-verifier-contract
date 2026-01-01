@@ -119,7 +119,7 @@ The worker:
   DKIM verification with the same logic as the contract
   (`src/verify_dkim.rs`).
 - Parses recovery instructions from the decrypted email (account id,
-  new public key, timestamp, from address).
+  new public key, sender hash, timestamp).
 
 Response params (on success):
 ```jsonc
@@ -127,7 +127,7 @@ Response params (on success):
   "verified": true,
   "account_id": "<recovered account id or \"\">",
   "new_public_key": "<ed25519:... or \"\">",
-  "from_address": "normalized from address",
+  "from_address_hash": "<sha256 bytes array>",
   "email_timestamp_ms": 1730000000000,
   "request_id": "123ABC",
   "error": null

@@ -37,11 +37,14 @@ pub struct VerificationResult {
     pub verified: bool,
     pub account_id: String,
     pub new_public_key: String,
-    pub from_address: String,
+    /// SHA-256 hash of the canonical sender email, salted by account id:
+    /// `sha256("<canonical_from>|<account_id_lower>")`.
+    /// Returned as raw bytes so the caller contract can compare directly against
+    /// `get_recovery_emails()` output (which is `Vec<Vec<u8>>`).
+    pub from_address_hash: Vec<u8>,
     pub email_timestamp_ms: Option<u64>,
     pub request_id: String,
     /// Optional diagnostic string for failures (e.g. worker error, DNS error).
-    ///
     /// Note: this is not persisted in contract state (Borsh) so that adding it
     /// stays backwards-compatible with previously stored `VerificationResult`s.
     #[borsh(skip)]
@@ -55,7 +58,7 @@ impl VerificationResult {
             verified: false,
             account_id: String::new(),
             new_public_key: String::new(),
-            from_address: String::new(),
+            from_address_hash: Vec::new(),
             email_timestamp_ms: None,
             request_id: request_id.as_ref().to_string(),
             error: Some(error.into()),

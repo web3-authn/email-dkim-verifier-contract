@@ -515,9 +515,9 @@ pub fn parse_recover_public_key_from_body(email: &str) -> Option<String> {
 
 /// Parse the `From:` header into a bare email address.
 ///
-/// This helper is used in the Outlayer worker so that `from_address` in the
-/// worker/contract responses is always of the form `user@example.com`, not a
-/// full display string like `User <user@example.com>`.
+/// This helper normalizes the sender to `user@example.com` (not a display string
+/// like `User <user@example.com>`). Note that the encrypted/private verification
+/// flow intentionally does not surface the sender address in its result payload.
 pub fn parse_from_address(email: &str) -> String {
     let value = match extract_header_value(email, "From") {
         Some(v) => v.trim().to_string(),

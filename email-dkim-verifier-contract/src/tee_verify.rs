@@ -15,7 +15,8 @@ struct VerifyEncryptedEmailResponse {
     verified: bool,
     account_id: String,
     new_public_key: String,
-    from_address: String,
+    #[serde(default)]
+    from_address_hash: Vec<u8>,
     email_timestamp_ms: Option<u64>,
     #[serde(default)]
     request_id: String,
@@ -199,7 +200,7 @@ pub fn on_email_verification_private_result(
         verified: verify_params.verified,
         account_id: verify_params.account_id,
         new_public_key: verify_params.new_public_key,
-        from_address: verify_params.from_address,
+        from_address_hash: verify_params.from_address_hash,
         email_timestamp_ms: verify_params.email_timestamp_ms,
         request_id: final_request_id.clone(),
         error: verify_params.error.clone(),

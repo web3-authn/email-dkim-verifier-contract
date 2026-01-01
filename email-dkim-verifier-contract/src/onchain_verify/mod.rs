@@ -202,17 +202,124 @@ pub fn on_email_verification_onchain_result(
         (String::new(), pk)
     };
 
-    let from_address = parse_from_address(&email_blob);
     let email_timestamp_ms = parse_email_timestamp_ms(&email_blob);
+    let from_address_hash = compute_from_address_hash(&email_blob, &account_id);
 
     let vr = VerificationResult {
         verified: true,
         account_id,
         new_public_key,
-        from_address,
+        from_address_hash,
         email_timestamp_ms,
         request_id: request_id.clone(),
         error: None,
     };
     vr
+}
+
+fn compute_from_address_hash(email_blob: &str, account_id: &str) -> Vec<u8> {
+    let from_header = extract_header_value(email_blob, "From").unwrap_or_default();
+    let canonical_from = canonicalize_email_address(&from_header);
+    let salt = account_id.trim().to_lowercase();
+    if canonical_from.is_empty() || salt.is_empty() {
+        return Vec::new();
+    }
+    let input = format!("{canonical_from}|{salt}");
+    env::sha256(input.as_bytes())
+}
+
+fn canonicalize_email_address(input: &str) -> String {
+    let raw = input.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+
+    // Strip leading "Header-Name:" when present (e.g. "From: ...").
+    let without_header_name = if let Some(colon_idx) = raw.find(':') {
+        let (prefix, rest) = raw.split_at(colon_idx);
+        let prefix = prefix.trim();
+        if !prefix.is_empty()
+            && prefix
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            rest[1..].trim_start()
+        } else {
+            raw
+        }
+    } else {
+        raw
+    };
+
+    // Prefer the common "Name <email@domain>" format.
+    let mut candidates: [&str; 2] = ["", without_header_name];
+    if let Some(start) = without_header_name.find('<') {
+        if let Some(end_rel) = without_header_name[start + 1..].find('>') {
+            let end = start + 1 + end_rel;
+            candidates[0] = &without_header_name[start + 1..end];
+        }
+    }
+
+    for candidate in candidates.iter().copied() {
+        let candidate = candidate.trim();
+        if candidate.is_empty() {
+            continue;
+        }
+
+        let candidate = if candidate.len() >= 7 && candidate[..7].eq_ignore_ascii_case("mailto:") {
+            candidate[7..].trim_start()
+        } else {
+            candidate
+        };
+
+        if let Some(found) = extract_email_like(candidate) {
+            return found.to_lowercase();
+        }
+    }
+
+    without_header_name.to_lowercase()
+}
+
+fn extract_email_like(input: &str) -> Option<&str> {
+    let bytes = input.as_bytes();
+    for (idx, b) in bytes.iter().enumerate() {
+        if *b != b'@' {
+            continue;
+        }
+
+        let mut start = idx;
+        while start > 0 && is_email_local_byte(bytes[start - 1]) {
+            start -= 1;
+        }
+
+        let mut end = idx + 1;
+        while end < bytes.len() && (is_email_domain_byte(bytes[end]) || bytes[end] == b'.') {
+            end += 1;
+        }
+
+        if start == idx || end == idx + 1 {
+            continue;
+        }
+
+        // Domain must not end with '.'.
+        if bytes[end - 1] == b'.' {
+            continue;
+        }
+
+        return Some(&input[start..end]);
+    }
+    None
+}
+
+fn is_email_local_byte(b: u8) -> bool {
+    matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9')
+        || matches!(
+            b,
+            b'.' | b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'/' | b'=' | b'?' | b'^'
+                | b'_' | b'`' | b'{' | b'|' | b'}' | b'~' | b'-'
+        )
+}
+
+fn is_email_domain_byte(b: u8) -> bool {
+    matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-')
 }

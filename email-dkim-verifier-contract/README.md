@@ -83,7 +83,7 @@ pub fn request_email_verification(
         pub verified: bool,
         pub account_id: String,
         pub new_public_key: String,
-        pub from_address: String,
+        pub from_address_hash: Vec<u8>,
         pub email_timestamp_ms: Option<u64>,
         pub request_id: String,
         pub error: Option<String>,
@@ -108,11 +108,9 @@ pub fn request_email_verification(
   - On‑chain mode (`email_blob` set, `encrypted_email_blob` unset):
     - OutLayer returns DNS TXT records for the DKIM selector and domain.
     - The contract runs `verify_dkim(email_blob, &records)` on‑chain.
-    - `from_address` is parsed from the `From:` header and normalized to a bare email (e.g. `alice@example.com`).
   - Encrypted mode (`encrypted_email_blob` set, `email_blob` unset):
     - OutLayer decrypts the email inside the TEE and runs DKIM verification there.
     - The contract **trusts the worker result** and does not recompute DKIM.
-    - `from_address` is provided by the worker, already normalized.
   - In both modes:
     - `verified == true` means DKIM verification passed and the message contained a valid recovery instruction, if present.
     - `verified == false` covers any failure (OutLayer error, DNS error, DKIM mismatch, RSA failure, malformed recovery instruction, etc.). `error` may be populated with a diagnostic string.
@@ -122,6 +120,9 @@ pub fn request_email_verification(
         - `account_id`: `"user.testnet".to_string()`
         - `new_public_key`: `"ed25519:new_public_keyxxxxxxxxxxxxxxxxxxx".to_string()`
       - When the format does not match, `account_id` / `new_public_key` are empty strings, and callers can treat the result as “DKIM verified, but no usable recovery instruction embedded in the message”.
+    - `from_address_hash`:
+      - A privacy-preserving binding to the sender address for allow-list checks.
+      - Computed as `sha256("<canonical_from>|<account_id_lower>")` and returned as raw bytes so it can be compared directly against `get_recovery_emails()` output.
     - `email_timestamp_ms`:
       - Parsed from the `Date:` header using RFC 2822 parsing and converted to milliseconds since Unix epoch (UTC).
       - `None` if the `Date:` header is missing or can’t be parsed.

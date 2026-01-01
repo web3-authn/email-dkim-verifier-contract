@@ -1,6 +1,8 @@
 use crate::api::{handle_request, RequestType};
 use super::crypto::encrypt_email;
 use base64;
+use sha2::{Digest, Sha256};
+use crate::parsers::parse_from_address;
 
 #[test]
 fn verify_encrypted_dkim_flow_fails_without_secret() {
@@ -84,12 +86,25 @@ fn encrypted_flow_runs_dkim_verification_in_worker() {
         "ed25519:86mqiBdv45gM4c5uLmvT3TU4g7DAg6KLpuabBSFweigm"
     );
 
-    let from_address = response
+    assert!(
+        response.response.get("from_address").is_none(),
+        "worker response must not leak sender email address"
+    );
+
+    let from_address_hash = response
         .response
-        .get("from_address")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    assert_eq!(from_address, "n6378056@gmail.com");
+        .get("from_address_hash")
+        .and_then(|v| v.as_array())
+        .expect("from_address_hash array");
+    assert_eq!(from_address_hash.len(), 32);
+    let from_address_hash_bytes: Vec<u8> = from_address_hash
+        .iter()
+        .map(|v| v.as_u64().expect("hash byte") as u8)
+        .collect();
+    let canonical_from = parse_from_address(email_blob).trim().to_lowercase();
+    let salt = "kerp30.w3a-v1.testnet";
+    let expected = Sha256::digest(format!("{canonical_from}|{salt}").as_bytes()).to_vec();
+    assert_eq!(from_address_hash_bytes, expected);
 
     let email_timestamp_ms = response
         .response
@@ -158,12 +173,14 @@ fn encrypted_flow_fails_for_tampered_public_key() {
         .unwrap_or_default();
     assert_eq!(new_public_key, "");
 
-    let from_address = response
+    assert!(response.response.get("from_address").is_none());
+
+    let from_address_hash = response
         .response
-        .get("from_address")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    assert_eq!(from_address, "");
+        .get("from_address_hash")
+        .and_then(|v| v.as_array())
+        .expect("from_address_hash array");
+    assert!(from_address_hash.is_empty());
 
     let email_timestamp_ms = response
         .response

@@ -21,7 +21,7 @@ fn private_verification_propagates_request_id_and_error() {
             "verified": false,
             "account_id": "",
             "new_public_key": "",
-            "from_address": "",
+            "from_address_hash": [],
             "email_timestamp_ms": null,
             "request_id": "",
             "error": "secrets_not_found"
@@ -35,6 +35,7 @@ fn private_verification_propagates_request_id_and_error() {
     );
 
     assert!(!vr.verified);
+    assert!(vr.from_address_hash.is_empty());
     assert_eq!(vr.request_id, request_id);
     assert_eq!(vr.error.as_deref(), Some("secrets_not_found"));
 }
@@ -52,7 +53,7 @@ fn private_verification_worker_request_id_overrides_argument() {
             "verified": true,
             "account_id": "alice.testnet",
             "new_public_key": "ed25519:abc",
-            "from_address": "alice@example.com",
+            "from_address_hash": [1, 2, 3],
             "email_timestamp_ms": 1700000000000u64,
             "request_id": "RID456",
             "error": null
@@ -66,6 +67,7 @@ fn private_verification_worker_request_id_overrides_argument() {
     );
 
     assert!(vr.verified);
+    assert_eq!(vr.from_address_hash, vec![1, 2, 3]);
     assert_eq!(vr.request_id, "RID456");
     assert!(vr.error.is_none());
 }

@@ -8,6 +8,7 @@ use crate::parsers::{
 use crate::verify_dkim::verify_dkim;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 // Method names
 const GET_DNS_RECORDS_METHOD: &str = "get-dns-records";
@@ -44,7 +45,7 @@ impl ResponseType {
                 "verified": false,
                 "account_id": "",
                 "new_public_key": "",
-                "from_address": "",
+                "from_address_hash": Vec::<u8>::new(),
                 "email_timestamp_ms": Option::<u64>::None,
                 "request_id": request_id,
                 "error": error.into(),
@@ -276,8 +277,23 @@ fn handle_verify_encrypted_dkim(args: Value) -> ResponseType {
         (String::new(), pk)
     };
 
-    let from_address = parse_from_address(&decrypted_email);
     let email_timestamp_ms = parse_email_timestamp_ms(&decrypted_email);
+
+    let canonical_from = parse_from_address(&decrypted_email).trim().to_lowercase();
+    let salt = verify_args
+        .context
+        .get("account_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or(account_id.as_str())
+        .trim()
+        .to_lowercase();
+    let from_address_hash = if canonical_from.is_empty() || salt.is_empty() {
+        Vec::<u8>::new()
+    } else {
+        let input = format!("{canonical_from}|{salt}");
+        let digest = Sha256::digest(input.as_bytes());
+        digest.to_vec()
+    };
 
     ResponseType {
         method: VERIFY_ENCRYPTED_EMAIL_METHOD.to_string(),
@@ -285,7 +301,7 @@ fn handle_verify_encrypted_dkim(args: Value) -> ResponseType {
             "verified": true,
             "account_id": account_id,
             "new_public_key": new_public_key,
-            "from_address": from_address,
+            "from_address_hash": from_address_hash,
             "email_timestamp_ms": email_timestamp_ms,
             "request_id": request_id,
             "error": serde_json::Value::Null,
