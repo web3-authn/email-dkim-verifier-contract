@@ -229,6 +229,25 @@ textarea {
   white-space: nowrap;
 }
 
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(86, 191, 162, 0.16);
+  border: 1px solid rgba(86, 191, 162, 0.35);
+  color: #1a4b3d;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
 textarea {
   min-height: 110px;
   resize: vertical;

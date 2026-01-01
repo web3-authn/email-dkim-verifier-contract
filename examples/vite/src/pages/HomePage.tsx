@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useAccountInput, useTatchi } from "@tatchi-xyz/sdk/react";
 import { ContractsCard } from "../components/ContractsCard";
 import { Step1RegisterOrLogin } from "../components/Step1RegisterOrLogin";
 import { Step2SetRecoveryEmails } from "../components/Step2SetRecoveryEmails";
 import { Step3Logout } from "../components/Step3Logout";
 import { Step4RecoverWithEmail } from "../components/Step4RecoverWithEmail";
+import { Step5TestTransfer } from "../components/Step5TestTransfer";
 
 const env = import.meta.env;
 
@@ -33,8 +34,6 @@ export function HomePage() {
     currentNearAccountId: loginState.nearAccountId,
     isLoggedIn: loginState.isLoggedIn,
   });
-
-  const [recoveryEmail, setRecoveryEmail] = useState("");
 
   useEffect(() => {
     if (!DEFAULT_ACCOUNT_ID || inputUsername) return;
@@ -87,8 +86,6 @@ export function HomePage() {
 
         <Step2SetRecoveryEmails
           targetAccountId={targetAccountId}
-          recoveryEmail={recoveryEmail}
-          onChangeRecoveryEmail={setRecoveryEmail}
         />
 
         <Step3Logout />
@@ -96,9 +93,9 @@ export function HomePage() {
         <Step4RecoverWithEmail
           targetAccountId={targetAccountId}
           lastAccountId={lastAccountId}
-          recoveryEmail={recoveryEmail}
-          onChangeRecoveryEmail={setRecoveryEmail}
         />
+
+        <Step5TestTransfer receiverId={WEBAUTHN_CONTRACT_ID} />
       </div>
     </div>
   );

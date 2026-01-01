@@ -10,10 +10,11 @@ import "./index.css";
 // Note: Vite requires using `import.meta.env` exactly; optional chaining breaks env injection.
 const env = import.meta.env;
 
-const relayerUrl = env.VITE_RELAYER_URL || "https://relay-server.localhost";
+const relayerUrl = env.VITE_RELAYER_URL || "https://relay.tatchi.xyz";
 const emailRecovererContractId = env.VITE_EMAIL_RECOVERER_CONTRACT_ID;
 const dkimVerifierContractId = env.VITE_DKIM_VERIFIER_CONTRACT_ID;
 const zkEmailVerifierContractId = env.VITE_ZK_EMAIL_VERIFIER_CONTRACT_ID;
+const walletOrigin = env.VITE_WALLET_ORIGIN || "https://wallet.tatchi.xyz";
 
 const config: TatchiConfigsInput = {
   relayer: { url: relayerUrl },
@@ -31,14 +32,12 @@ if (emailRecovererContractId || dkimVerifierContractId || zkEmailVerifierContrac
   config.emailRecoveryContracts = emailRecoveryContracts;
 }
 
-if (env.VITE_WALLET_ORIGIN) {
-  config.iframeWallet = {
-    walletOrigin: env.VITE_WALLET_ORIGIN,
-    walletServicePath: env.VITE_WALLET_SERVICE_PATH || "/wallet-service",
-    sdkBasePath: env.VITE_SDK_BASE_PATH || "/sdk",
-    rpIdOverride: env.VITE_RP_ID_BASE,
-  };
-}
+config.iframeWallet = {
+  walletOrigin,
+  walletServicePath: env.VITE_WALLET_SERVICE_PATH || "/wallet-service",
+  sdkBasePath: env.VITE_SDK_BASE_PATH || "/sdk",
+  rpIdOverride: env.VITE_RP_ID_BASE || undefined,
+};
 
 const appRoot = document.getElementById("app-root");
 

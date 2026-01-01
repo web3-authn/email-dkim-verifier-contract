@@ -1,44 +1,40 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useTatchi } from "@tatchi-xyz/sdk/react";
 import { useOutputLog } from "../hooks/useOutputLog";
 import { Output } from "./Output";
+import { getErrorMessage } from "../utils/errors";
 
 export function Step3Logout() {
   const { loginState, logout } = useTatchi();
   const [isLoading, setIsLoading] = useState(false);
-  const {
-    output: log,
-    clearOutput: clearLog,
-    appendOutput: appendLog,
-    setOutputText: setLogText,
-  } = useOutputLog();
+  const log = useOutputLog();
 
   const isBlocked = !loginState.isLoggedIn;
   const isDisabled = isBlocked || isLoading;
 
-  const handleLogout = useCallback(async () => {
+  const handleLogout = async () => {
     if (!loginState.isLoggedIn) {
-      setLogText("error", "Not logged in.");
+      log.setOutputText("error", "Not logged in.");
       return;
     }
     if (isLoading) return;
 
     setIsLoading(true);
-    clearLog();
+    log.clearOutput();
     toast.loading("Logging out…", { id: "logout" });
     try {
-      await Promise.resolve(logout());
-      appendLog("ok", "Logged out.");
+      await logout();
+      log.appendOutput("ok", "Logged out.");
       toast.success("Logged out.", { id: "logout" });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setLogText("error", message);
+      const message = getErrorMessage(error);
+      log.setOutputText("error", message);
       toast.error(message || "Logout failed", { id: "logout" });
     } finally {
       setIsLoading(false);
     }
-  }, [appendLog, isLoading, loginState.isLoggedIn, logout, setLogText]);
+  };
 
   return (
     <div className="row">
@@ -58,7 +54,7 @@ export function Step3Logout() {
             {isLoading ? "Logging out..." : "Logout"}
           </button>
         </div>
-        <Output state={log} />
+        <Output state={log.output} />
       </section>
     </div>
   );
