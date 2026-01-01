@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
     env:
-      CF_PAGES_PROJECT_VITE: email-recovery-example
+      CF_PAGES_PROJECT_VITE: outlayer-email-recovery-example
     steps:
       - name: Checkout
         uses: actions/checkout@v4
