@@ -3,6 +3,8 @@
 // Project-specific env typings for Vite
 // Note: Keep keys in sync with .env files and CI/Pages envs.
 interface ImportMetaEnv {
+  readonly RECOVER_EMAIL_RECIPIENT?: string;
+
   readonly VITE_RELAYER_URL?: string;
   readonly VITE_RELAYER_ACCOUNT_ID?: string;
 

@@ -110,7 +110,7 @@ export function Step1RegisterOrLogin({
 
   const title = mode === "login" ? "Login" : "Register";
   const loadingLabel = mode === "login" ? "Logging in..." : "Registering...";
-  const buttonLabel = mode === "login" ? "Login with passkey" : "Register passkey";
+  const buttonLabel = mode === "login" ? "Login with Passkey" : "Register Passkey";
   const explorerBaseUrl = getNearExplorerBaseUrl(tatchi?.configs?.nearExplorerUrl);
   const accountExplorerUrl = getNearAccountExplorerUrl(explorerBaseUrl, targetAccountId);
 
@@ -163,11 +163,9 @@ export function Step1RegisterOrLogin({
       <section className={`panel ${isBlocked ? "is-disabled" : ""}`}>
         <div className="panel-header">
           <h2>{title}</h2>
-          <span className="pill">01</span>
         </div>
         <form onSubmit={handleSubmit} className="stack">
           <label>
-            NEAR account id
             <div className="input-row">
               <input
                 value={inputUsername}
@@ -178,8 +176,15 @@ export function Step1RegisterOrLogin({
               <span className="postfix">{postfix}</span>
             </div>
           </label>
-          <p className="helper">
-            Target account:{" "}
+          <button type="submit" disabled={isDisabled} aria-busy={isLoading}>
+            {isLoading && <span className="spinner" aria-hidden="true" />}
+            {isLoading ? loadingLabel : buttonLabel}
+          </button>
+          <p className="helper" style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+          }}>
+            NEAR Account ID: &nbsp;
             {accountExplorerUrl ? (
               <a className="mailto" href={accountExplorerUrl} target="_blank" rel="noopener noreferrer">
                 {targetAccountId}
@@ -188,10 +193,6 @@ export function Step1RegisterOrLogin({
               targetAccountId || "Enter a username to build the full account id."
             )}
           </p>
-          <button type="submit" disabled={isDisabled} aria-busy={isLoading}>
-            {isLoading && <span className="spinner" aria-hidden="true" />}
-            {isLoading ? loadingLabel : buttonLabel}
-          </button>
         </form>
         <Output state={log.output} />
       </section>

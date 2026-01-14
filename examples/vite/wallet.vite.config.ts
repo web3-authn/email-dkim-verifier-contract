@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
   return {
     clearScreen: false,
     logLevel: 'info',
+    envPrefix: ['VITE_', 'RECOVER_'],
     server: {
       port: 5175,
       allowedHosts: ['wallet.example.localhost', 'pta-m4.local'],

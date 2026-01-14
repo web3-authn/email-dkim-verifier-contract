@@ -10,7 +10,7 @@
     "preview": "vite preview --host --port 5174"
   },
   "dependencies": {
-    "@tatchi-xyz/sdk": "^0.22.0",
+    "@tatchi-xyz/sdk": "^0.31.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "sonner": "^2.0.7"

@@ -9,6 +9,11 @@ import { toast } from "sonner";
 import { useOutputLog } from "../hooks/useOutputLog";
 import { Output } from "./Output";
 import { getErrorMessage } from "../utils/errors";
+import {
+  extractNearTransactionHash,
+  getNearExplorerBaseUrl,
+  getNearTransactionExplorerUrl,
+} from "../utils/nearExplorer";
 
 type Step2SetRecoveryEmailsProps = {
   targetAccountId: string;
@@ -19,6 +24,7 @@ export function Step2SetRecoveryEmails({ targetAccountId }: Step2SetRecoveryEmai
   const [isLoading, setIsLoading] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const log = useOutputLog();
+  const explorerBaseUrl = getNearExplorerBaseUrl(tatchi?.configs?.nearExplorerUrl);
 
   const onSetRecoveryEmailEvents = (event: ActionSSEEvent) => {
     if (event.message) log.appendOutput("idle", event.message);
@@ -52,7 +58,21 @@ export function Step2SetRecoveryEmails({ targetAccountId }: Step2SetRecoveryEmai
         toast.loading(event.message || "Broadcasting transaction...", { id: toastId });
         return;
       case ActionPhase.STEP_8_ACTION_COMPLETE:
-        toast.success(event.message || "Recovery email saved.", { id: toastId });
+        {
+          const message = event.message || "Recovery email saved.";
+          const txHash = extractNearTransactionHash(message);
+          const txUrl = getNearTransactionExplorerUrl(explorerBaseUrl, txHash);
+          toast.success(
+            txUrl ? (
+              <a className="mailto" href={txUrl} target="_blank" rel="noopener noreferrer">
+                {message}
+              </a>
+            ) : (
+              message
+            ),
+            { id: toastId },
+          );
+        }
         return;
       default:
         toast.loading(event.message || "Processing...", { id: toastId });
@@ -112,8 +132,7 @@ export function Step2SetRecoveryEmails({ targetAccountId }: Step2SetRecoveryEmai
       </aside>
       <section className={`panel ${isBlocked ? "is-disabled" : ""}`}>
         <div className="panel-header">
-          <h2>Set recovery email</h2>
-          <span className="pill">02</span>
+          <h2>Set Recovery Email</h2>
         </div>
         <form onSubmit={handleSubmit} className="stack">
           <label>
@@ -127,10 +146,13 @@ export function Step2SetRecoveryEmails({ targetAccountId }: Step2SetRecoveryEmai
           </label>
           <button type="submit" disabled={isDisabled} aria-busy={isLoading}>
             {isLoading && <span className="spinner" aria-hidden="true" />}
-            {isLoading ? "Submitting..." : "Save recovery email"}
+            {isLoading ? "Submitting..." : "Save Recovery Email"}
           </button>
+          {
+            loginState.nearAccountId &&
+            <p className="helper pad-left-05">Logged in as {loginState.nearAccountId}.</p>
+            }
         </form>
-        {loginState.nearAccountId && <p className="helper">Logged in as {loginState.nearAccountId}.</p>}
         {isBlocked && <p className="helper">Login required to set recovery email.</p>}
         <Output state={log.output} />
       </section>

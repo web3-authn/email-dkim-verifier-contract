@@ -1,15 +1,101 @@
+[data-w3a-theme="light"] {
+  --w3a-colors-primary: oklch(0.56 0.158 255);
+  --w3a-colors-primaryHover: oklch(0.66 0.180 255);
+  --w3a-colors-secondary: oklch(0.6 0.14 295);
+  --w3a-colors-secondaryHover: oklch(0.65 0.15 298);
+  --w3a-colors-accent: oklch(0.74 0.166 170);
+  --w3a-colors-textPrimary: oklch(0.35 0.018 240);
+  --w3a-colors-textSecondary: oklch(0.53 0.02 240);
+  --w3a-colors-textMuted: oklch(0.75 0.016 240);
+  --w3a-colors-textButton: oklch(0.97 0.002 240);
+  --w3a-colors-buttonBackground: oklch(0.66 0.180 255);
+  --w3a-colors-buttonHoverBackground: oklch(0.70 0.174 255);
+  --w3a-colors-colorBackground: oklch(0.98 0.001 240);
+  --w3a-colors-surface: oklch(0.95 0.01 240);
+  --w3a-colors-surface2: oklch(0.915 0.0125 240);
+  --w3a-colors-surface3: oklch(0.88 0.015 240);
+  --w3a-colors-surface4: oklch(0.84 0.0175 240);
+  --w3a-colors-hover: oklch(0.95 0.005 240);
+  --w3a-colors-active: oklch(0.88 0.01 240);
+  --w3a-colors-focus: oklch(0.74 0.166 255);
+  --w3a-colors-success: oklch(0.66 0.180 255);
+  --w3a-colors-warning: oklch(0.66 0.188 95);
+  --w3a-colors-error: oklch(0.66 0.180 19);
+  --w3a-colors-info: oklch(0.66 0.180 255);
+  --w3a-colors-borderPrimary: oklch(0.8 0.02 240);
+  --w3a-colors-borderSecondary: oklch(0.82 0.014 240);
+  --w3a-colors-borderHover: oklch(0.725 0.0225 240);
+  --w3a-colors-backgroundGradientPrimary: linear-gradient(45deg, oklch(0.82 0.130 255) 0%, oklch(0.66 0.180 255) 50%);
+  --w3a-colors-backgroundGradientSecondary: linear-gradient(
+    90deg,
+    hsla(213, 62%, 45%, 1) 0%,
+    hsla(203, 89%, 71%, 1) 50%,
+    hsla(0, 0%, 96%, 1) 100%
+  );
+  --w3a-colors-backgroundGradient3: linear-gradient(90deg, oklch(0.20 0.010 240) 0%, oklch(0.95 0.005 240) 100%);
+  --w3a-colors-backgroundGradient4: linear-gradient(45deg, oklch(0.53 0.03 240) 0%, oklch(0.2 0.015 240) 50%);
+  --w3a-colors-grey25: oklch(0.99 0.001 240);
+  --w3a-colors-grey50: oklch(0.98 0.001 240);
+  --w3a-colors-grey75: oklch(0.97 0.002 240);
+  --w3a-colors-grey100: oklch(0.95 0.005 240);
+  --w3a-colors-grey200: oklch(0.88 0.01 240);
+  --w3a-colors-grey300: oklch(0.82 0.014 240);
+  --w3a-colors-grey400: oklch(0.65 0.02 240);
+  --w3a-colors-grey500: oklch(0.53 0.02 240);
+  --w3a-colors-grey600: oklch(0.4 0.02 240);
+  --w3a-colors-grey650: oklch(0.35 0.018 240);
+  --w3a-colors-grey700: oklch(0.3 0.015 240);
+  --w3a-colors-grey750: oklch(0.25 0.012 240);
+  --w3a-colors-grey800: oklch(0.2 0.01 240);
+  --w3a-colors-grey850: oklch(0.15 0.008 240);
+  --w3a-colors-grey900: oklch(0.1 0.005 240);
+  --w3a-colors-grey950: oklch(0.05 0.002 240);
+  --w3a-colors-slate25: oklch(0.99 0.003 240);
+  --w3a-colors-slate50: oklch(0.98 0.005 240);
+  --w3a-colors-slate75: oklch(0.965 0.007 240);
+  --w3a-colors-slate100: oklch(0.95 0.01 240);
+  --w3a-colors-slate150: oklch(0.915 0.0125 240);
+  --w3a-colors-slate200: oklch(0.88 0.015 240);
+  --w3a-colors-slate300: oklch(0.8 0.02 240);
+  --w3a-colors-slate400: oklch(0.65 0.025 240);
+  --w3a-colors-slate500: oklch(0.53 0.03 240);
+  --w3a-colors-slate600: oklch(0.4 0.025 240);
+  --w3a-colors-slate700: oklch(0.3 0.02 240);
+  --w3a-colors-slate800: oklch(0.2 0.015 240);
+  --w3a-colors-slate900: oklch(0.1 0.01 240);
+  --w3a-colors-highlightReceiverId: oklch(0.66 0.180 255);
+  --w3a-colors-highlightMethodName: oklch(0.66 0.180 255);
+  --w3a-colors-highlightAmount: oklch(0.66 0.180 255);
+  --w3a-spacing-xs: 0.25rem;
+  --w3a-spacing-sm: 0.5rem;
+  --w3a-spacing-md: 1rem;
+  --w3a-spacing-lg: 1.5rem;
+  --w3a-spacing-xl: 2rem;
+  --w3a-border-radius-sm: 0.5rem;
+  --w3a-border-radius-md: 1rem;
+  --w3a-border-radius-lg: 1.5rem;
+  --w3a-border-radius-xl: 2rem;
+  --w3a-shadows-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --w3a-shadows-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --w3a-shadows-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --w3a-shadows-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --w3a-passkey-auth-menu2-seg-active-bg: var(--w3a-colors-slate50);
+}
+
 :root {
   color-scheme: light;
-  --paper: #f6f1e6;
-  --ink: #1e1b18;
-  --muted: #6e675f;
-  --accent: #ff7b3a;
-  --accent-deep: #c4521d;
-  --mint: #56bfa2;
-  --card: #ffffff;
-  --border: rgba(30, 27, 24, 0.12);
-  --shadow: 0 18px 60px rgba(18, 18, 18, 0.12);
-  --radius: 18px;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Courier New", monospace;
+  --paper: var(--w3a-colors-colorBackground);
+  --ink: var(--w3a-colors-textPrimary);
+  --muted: var(--w3a-colors-textSecondary);
+  --accent: var(--w3a-colors-buttonBackground);
+  --accent-deep: var(--w3a-colors-primary);
+  --mint: var(--w3a-colors-accent);
+  --card: var(--w3a-colors-surface);
+  --border: var(--w3a-colors-borderSecondary);
+  --shadow: var(--w3a-shadows-xl);
+  --radius: var(--w3a-border-radius-lg);
 }
 
 * {
@@ -18,12 +104,13 @@
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   color: var(--ink);
   background:
-    radial-gradient(circle at 20% 20%, rgba(255, 123, 58, 0.18), transparent 55%),
-    radial-gradient(circle at 80% 10%, rgba(86, 191, 162, 0.2), transparent 50%),
-    linear-gradient(135deg, #f8f3ea 0%, #efe7db 55%, #f6efe5 100%);
+    radial-gradient(circle at 20% 20%, oklch(0.66 0.180 255 / 0.16), transparent 55%),
+    radial-gradient(circle at 82% 12%, oklch(0.74 0.166 170 / 0.16), transparent 50%),
+    radial-gradient(circle at 70% 70%, oklch(0.6 0.14 295 / 0.12), transparent 55%),
+    linear-gradient(135deg, var(--w3a-colors-grey50) 0%, var(--w3a-colors-surface2) 55%, var(--w3a-colors-grey75) 100%);
   min-height: 100vh;
 }
 
@@ -42,19 +129,19 @@ body::after {
 body::before {
   top: -160px;
   right: -140px;
-  background: radial-gradient(circle, rgba(126, 200, 255, 0.5), transparent 65%);
+  background: radial-gradient(circle, oklch(0.82 0.130 255 / 0.55), transparent 65%);
 }
 
 body::after {
   bottom: -220px;
   left: -120px;
-  background: radial-gradient(circle, rgba(255, 210, 150, 0.6), transparent 65%);
+  background: radial-gradient(circle, oklch(0.74 0.166 170 / 0.6), transparent 65%);
 }
 
-.page {
-  max-width: 1100px;
+.layout {
+  max-width: 960px;
   margin: 0 auto;
-  padding: 48px 24px 72px;
+  padding: 2rem 1rem 12rem 1rem;
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -62,6 +149,8 @@ body::after {
 
 .hero {
   display: grid;
+  margin-top: 4rem;
+  margin-bottom: 2rem;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 24px;
   align-items: center;
@@ -96,6 +185,7 @@ h3 {
   color: var(--muted);
   margin: 0 0 12px;
   max-width: 540px;
+  line-height: 1.5rem;
 }
 
 .status {
@@ -104,17 +194,31 @@ h3 {
   margin: 0;
 }
 
-.card,
-.panel {
+.link {
+  color: var(--w3a-colors-primary);
+  text-decoration: none;
+}
+.link:hover {
+  color: var(--w3a-colors-primaryHover);
+}
+
+.card, .panel {
   background: var(--card);
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  padding: 22px;
+  padding: 2rem;
   box-shadow: var(--shadow);
+  max-width: 600px;
 }
 
 .panel {
   scroll-margin-top: 24px;
+}
+
+aside.panel.note {
+  background: none;
+  border: none;
+  box-shadow: none;
 }
 
 .row.is-inactive .panel {
@@ -140,6 +244,15 @@ h3 {
   align-items: start;
 }
 
+.span-columns {
+  grid-column: 1 / -1;
+}
+
+.row.row-wide .panel,
+.row.row-wide .card {
+  max-width: none;
+}
+
 .note h3 {
   margin: 0 0 8px;
 }
@@ -157,7 +270,7 @@ h3 {
 
 .card dd {
   margin: 0;
-  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.92rem;
   word-break: break-all;
 }
@@ -170,19 +283,14 @@ h3 {
   margin-bottom: 12px;
 }
 
-.pill {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(255, 123, 58, 0.16);
-  color: #5a2104;
-  font-size: 0.75rem;
-  font-weight: 600;
+.pad-left-05 {
+  padding-left: 0.5rem;
 }
 
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0.5rem;
 }
 
 .split {
@@ -198,15 +306,24 @@ label {
   font-size: 0.95rem;
 }
 
-input,
-textarea {
+input, textarea {
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 12px;
+  border-radius: 2rem;
   border: 1px solid var(--border);
-  background: #fbfaf7;
-  font-family: "IBM Plex Mono", "Courier New", monospace;
+  background: var(--w3a-colors-surface2);
+  color: var(--ink);
+  font-family: var(--font-mono);
   font-size: 0.9rem;
+
+}
+
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid oklch(0.74 0.166 255 / 0.35);
+  outline-offset: 2px;
 }
 
 .input-row {
@@ -217,13 +334,14 @@ textarea {
 
 .input-row input {
   flex: 1;
+  border-radius: 2rem;
 }
 
 .postfix {
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(86, 191, 162, 0.16);
-  color: #1a4b3d;
+  padding: 12px;
+  border-radius: 1rem;
+  background: oklch(0.74 0.166 170 / 0.16);
+  color: var(--ink);
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
@@ -240,12 +358,32 @@ textarea {
   align-items: center;
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(86, 191, 162, 0.16);
-  border: 1px solid rgba(86, 191, 162, 0.35);
-  color: #1a4b3d;
-  font-family: "IBM Plex Mono", "Courier New", monospace;
+  background: oklch(0.74 0.166 170 / 0.14);
+  border: 1px solid oklch(0.74 0.166 170 / 0.35);
+  color: var(--ink);
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   word-break: break-all;
+}
+
+.inline-highlight {
+  display: inline;
+  line-height: inherit;
+  padding: 0 0.35em;
+  border-radius: 0.6em;
+  background: oklch(0.74 0.166 170 / 0.14);
+  box-shadow: inset 0 0 0 1px oklch(0.74 0.166 170 / 0.35);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  word-break: normal;
+}
+
+.flow-explainer .helper {
+  line-height: 1.55;
+}
+
+.flow-explainer ol.helper > li {
+  margin: 0.35rem 0;
 }
 
 textarea {
@@ -258,18 +396,22 @@ button {
   border-radius: 999px;
   padding: 10px 18px;
   font-weight: 600;
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
-  background: var(--accent);
-  color: #2d1400;
+  font-family: var(--font-sans);
+  background: var(--w3a-colors-buttonBackground);
+  color: var(--w3a-colors-textButton);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   transition: box-shadow 0.2s ease;
-  box-shadow: 0 12px 30px rgba(255, 123, 58, 0.25);
+  box-shadow: 0 12px 30px oklch(0.66 0.180 255 / 0.25);
+  min-height: 44px;
+  font-size: 1rem;
 }
 
 button:hover:not(:disabled) {
+  background: var(--w3a-colors-buttonHoverBackground);
+  box-shadow: 0 14px 34px oklch(0.66 0.180 255 / 0.28);
 }
 
 button:disabled {
@@ -288,49 +430,69 @@ button:disabled {
   animation: spin 0.8s linear infinite;
 }
 
+.margin-top-05 {
+  margin-top: 0.5rem;
+}
+
 .helper {
   margin: 0;
   font-size: 0.85rem;
   color: var(--muted);
 }
 
+.helper2 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+
 .output {
   margin-top: 12px;
-  padding: 14px;
-  border-radius: 14px;
-  background: #12100f;
-  color: #f1ede6;
-  font-family: "IBM Plex Mono", "Courier New", monospace;
+  padding: 12px;
+  border-radius: 1rem;
+  background: var(--w3a-colors-surface2);
+  color: var(--w3a-colors-textSecondary);
+  font-family: var(--font-mono);
   font-size: 0.85rem;
-  min-height: 72px;
-  max-height: 220px;
   overflow: auto;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--w3a-colors-borderSecondary);
   white-space: pre-wrap;
 }
 
 .output[data-status="error"] {
-  border-color: rgba(255, 123, 58, 0.65);
+  border-color: var(--w3a-colors-error);
+  background: oklch(0.66 0.180 19 / 0.08);
 }
 
 .output[data-status="ok"] {
-  border-color: rgba(86, 191, 162, 0.6);
+  border-color: var(--w3a-colors-success);
+  background: oklch(0.66 0.180 255 / 0.07);
 }
 
 .output.muted {
-  background: rgba(18, 16, 15, 0.08);
+  background: var(--w3a-colors-surface);
   color: var(--muted);
   border: 1px dashed var(--border);
 }
 
 .mailto {
   font-size: 0.85rem;
-  color: var(--accent-deep);
+  color: var(--w3a-colors-primary);
   text-decoration: none;
 }
 
 .mailto:hover {
   text-decoration: underline;
+}
+
+.wallet-status-fixed {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  margin: 0;
+  max-width: calc(100vw - 32px);
 }
 
 @keyframes spin {
@@ -340,8 +502,14 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
-  .page {
+  .layout {
     padding: 32px 16px 56px;
+  }
+
+  .wallet-status-fixed {
+    left: 12px;
+    bottom: 12px;
+    max-width: calc(100vw - 24px);
   }
 
   .row {

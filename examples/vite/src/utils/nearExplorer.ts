@@ -10,3 +10,15 @@ export function getNearAccountExplorerUrl(baseUrl: string, accountId?: string | 
   return `${baseUrl}/address/${id}`;
 }
 
+export function getNearTransactionExplorerUrl(baseUrl: string, txHash?: string | null): string {
+  const hash = (txHash || "").trim();
+  if (!hash) return "";
+  return `${baseUrl}/txns/${hash}`;
+}
+
+export function extractNearTransactionHash(message?: string | null): string {
+  const text = (message || "").trim();
+  if (!text) return "";
+  const match = text.match(/\bTransaction\s+([1-9A-HJ-NP-Za-km-z]{32,})\b/i);
+  return match?.[1] ?? "";
+}

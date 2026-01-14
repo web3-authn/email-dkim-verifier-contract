@@ -11,18 +11,28 @@ import "./index.css";
 const env = import.meta.env;
 
 const relayerUrl = env.VITE_RELAYER_URL || "https://relay.tatchi.xyz";
+const recoverEmailRecipient = env.RECOVER_EMAIL_RECIPIENT;
 const emailRecovererContractId = env.VITE_EMAIL_RECOVERER_CONTRACT_ID;
 const dkimVerifierContractId = env.VITE_DKIM_VERIFIER_CONTRACT_ID;
 const zkEmailVerifierContractId = env.VITE_ZK_EMAIL_VERIFIER_CONTRACT_ID;
-const walletOrigin = env.VITE_WALLET_ORIGIN || "https://wallet.tatchi.xyz";
+const walletOrigin = env.VITE_WALLET_ORIGIN || "https://wallet.web3authn.org";
 
-const config: TatchiConfigsInput = {
-  relayer: { url: relayerUrl },
-};
+const config: TatchiConfigsInput = { relayer: { url: relayerUrl } };
 
 if (env.VITE_WEBAUTHN_CONTRACT_ID) config.contractId = env.VITE_WEBAUTHN_CONTRACT_ID;
 if (env.VITE_NEAR_NETWORK) config.nearNetwork = env.VITE_NEAR_NETWORK;
 if (env.VITE_NEAR_RPC_URL) config.nearRpcUrl = env.VITE_NEAR_RPC_URL;
+if (env.VITE_NEAR_EXPLORER) config.nearExplorerUrl = env.VITE_NEAR_EXPLORER;
+
+if (recoverEmailRecipient) {
+  config.relayer = {
+    ...(config.relayer ?? {}),
+    emailRecovery: {
+      ...(config.relayer?.emailRecovery ?? {}),
+      mailtoAddress: recoverEmailRecipient,
+    },
+  };
+}
 
 if (emailRecovererContractId || dkimVerifierContractId || zkEmailVerifierContractId) {
   const emailRecoveryContracts: NonNullable<TatchiConfigsInput["emailRecoveryContracts"]> = {};

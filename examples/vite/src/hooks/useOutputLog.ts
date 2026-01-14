@@ -15,13 +15,8 @@ export function useOutputLog() {
 
   const appendOutput = useCallback((status: OutputState["status"], value: unknown) => {
     const line = safeJson(value);
-    setOutput((prev) => {
-      const nextText = prev.text ? `${prev.text}\n${line}` : line;
-      const nextStatus = prev.status === "error" ? "error" : status;
-      return { status: nextStatus, text: nextText };
-    });
+    setOutput({ status, text: line });
   }, []);
 
   return { output, clearOutput, setOutputText, appendOutput };
 }
-

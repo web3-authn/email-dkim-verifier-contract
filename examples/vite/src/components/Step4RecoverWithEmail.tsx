@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   EmailRecoveryPhase,
   EmailRecoveryStatus,
@@ -35,9 +35,23 @@ export function Step4RecoverWithEmail({
   const [mailtoUrl, setMailtoUrl] = useState("");
   const [pendingNearPublicKey, setPendingNearPublicKey] = useState("");
   const [requestId, setRequestId] = useState("");
+  const [pollingSeconds, setPollingSeconds] = useState(0);
+  const [isPolling, setIsPolling] = useState(false);
+  const pollingActiveRef = useRef(false);
+  const pollingStartedAtRef = useRef<number | null>(null);
   const log = useOutputLog();
 
   const toastId = "email-recovery";
+
+  useEffect(() => {
+    if (!isPolling) return;
+    const interval = setInterval(() => {
+      const startedAt = pollingStartedAtRef.current;
+      if (!startedAt) return;
+      setPollingSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isPolling]);
 
   const onEmailRecoveryEvent = (event: EmailRecoverySSEEvent) => {
     if (event.message) log.appendOutput("idle", event.message);
@@ -48,6 +62,22 @@ export function Step4RecoverWithEmail({
     if (data?.requestId) setRequestId(data.requestId);
     if (data?.mailtoUrl) setMailtoUrl(data.mailtoUrl);
     if (data?.nearPublicKey) setPendingNearPublicKey(data.nearPublicKey);
+
+    const isPollingPhase = event.step === 4;
+
+    if (isPollingPhase) {
+      if (!pollingActiveRef.current || !pollingStartedAtRef.current) {
+        pollingActiveRef.current = true;
+        pollingStartedAtRef.current = Date.now();
+        setPollingSeconds(0);
+      }
+      if (!isPolling) setIsPolling(true);
+    } else if (pollingActiveRef.current || isPolling) {
+      pollingActiveRef.current = false;
+      pollingStartedAtRef.current = null;
+      setPollingSeconds(0);
+      setIsPolling(false);
+    }
 
     if (event.phase === EmailRecoveryPhase.STEP_6_COMPLETE && event.status === EmailRecoveryStatus.SUCCESS) {
       toast.success(event.message || "Email recovery complete", { id: toastId });
@@ -114,6 +144,10 @@ export function Step4RecoverWithEmail({
     setMailtoUrl("");
     setPendingNearPublicKey("");
     setRequestId("");
+    pollingActiveRef.current = false;
+    pollingStartedAtRef.current = null;
+    setPollingSeconds(0);
+    setIsPolling(false);
     toast.loading("Preparing email recovery…", { id: toastId });
 
     try {
@@ -173,27 +207,15 @@ export function Step4RecoverWithEmail({
   return (
     <div className="row">
       <aside className={`panel note ${isBlocked ? "is-disabled" : ""}`}>
-        <h3>04 Recover with email</h3>
+        <h3>04 Recover with Email</h3>
         <p className="helper">
           Send an encrypted transactional email to an Outlayer worker, which verifies the email DKIM signature and
           recovers your account.
-        </p>
-        <p className="helper">
-          Last known account:{" "}
-          {lastAccountExplorerUrl ? (
-            <a className="mailto" href={lastAccountExplorerUrl} target="_blank" rel="noopener noreferrer">
-              {lastAccountId}
-            </a>
-          ) : (
-            lastAccountId
-          )}
-          .
         </p>
       </aside>
       <section className={`panel ${isBlocked ? "is-disabled" : ""}`}>
         <div className="panel-header">
           <h2>Recover with email</h2>
-          <span className="pill">04</span>
         </div>
         <div className="stack">
           <p className="helper">
@@ -215,6 +237,14 @@ export function Step4RecoverWithEmail({
               {requestId && <span className="chip">request_id: {requestId}</span>}
               {pendingNearPublicKey && <span className="chip">{pendingNearPublicKey}</span>}
             </div>
+          )}
+          {isPolling && accountIdToRecover && recoverAccountExplorerUrl && (
+            <p className="helper">
+              Polling… {pollingSeconds}s ·{" "}
+              <a className="mailto" href={recoverAccountExplorerUrl} target="_blank" rel="noopener noreferrer">
+                {accountIdToRecover}
+              </a>
+            </p>
           )}
           <button type="button" onClick={recoverWithEmail} disabled={isDisabled} aria-busy={isLoading}>
             {isLoading && <span className="spinner" aria-hidden="true" />}

@@ -12,10 +12,11 @@ import { tatchiApp } from '@tatchi-xyz/sdk/plugins/vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const walletOrigin = env.VITE_WALLET_ORIGIN || 'https://wallet.tatchi.xyz'
+  const walletOrigin = env.VITE_WALLET_ORIGIN || 'https://wallet.web3authn.org'
   return {
     clearScreen: false,
     logLevel: 'info',
+    envPrefix: ['VITE_', 'RECOVER_'],
     server: {
       port: 5174,
       // Allow access via reverse-proxied hosts (Caddy) and Bonjour (.local)

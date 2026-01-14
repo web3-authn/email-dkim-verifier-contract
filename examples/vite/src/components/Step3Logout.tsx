@@ -45,7 +45,6 @@ export function Step3Logout() {
       <section className={`panel ${isBlocked ? "is-disabled" : ""}`}>
         <div className="panel-header">
           <h2>Logout</h2>
-          <span className="pill">03</span>
         </div>
         <div className="stack">
           <p className="helper">Account recovery should be performed while logged out. Logout and clear the session.</p>

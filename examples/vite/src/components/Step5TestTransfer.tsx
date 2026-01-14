@@ -10,10 +10,15 @@ import { toast } from "sonner";
 import { useOutputLog } from "../hooks/useOutputLog";
 import { Output } from "./Output";
 import { getErrorMessage } from "../utils/errors";
-import { getNearAccountExplorerUrl, getNearExplorerBaseUrl } from "../utils/nearExplorer";
+import {
+  extractNearTransactionHash,
+  getNearAccountExplorerUrl,
+  getNearExplorerBaseUrl,
+  getNearTransactionExplorerUrl,
+} from "../utils/nearExplorer";
 
-const TRANSFER_NEAR = "0.001";
-const TRANSFER_AMOUNT_YOCTO = "1000000000000000000000"; // 0.001 NEAR
+const TRANSFER_NEAR = "0.000123";
+const TRANSFER_AMOUNT_YOCTO = "123000000000000000000"; // 0.000123 NEAR
 
 type Step5TestTransferProps = {
   receiverId: string;
@@ -57,7 +62,22 @@ export function Step5TestTransfer({ receiverId }: Step5TestTransferProps) {
         toast.loading(event.message || "Broadcasting transaction...", { id: toastId });
         return;
       case ActionPhase.STEP_8_ACTION_COMPLETE:
-        toast.success(event.message || "Transfer submitted.", { id: toastId });
+        {
+          const message = event.message || "Transfer submitted.";
+          const txHash = extractNearTransactionHash(message);
+          const explorerBaseUrl = getNearExplorerBaseUrl(tatchi?.configs?.nearExplorerUrl);
+          const txUrl = getNearTransactionExplorerUrl(explorerBaseUrl, txHash);
+          toast.success(
+            txUrl ? (
+              <a className="mailto" href={txUrl} target="_blank" rel="noopener noreferrer">
+                {message}
+              </a>
+            ) : (
+              message
+            ),
+            { id: toastId },
+          );
+        }
         return;
       default:
         toast.loading(event.message || "Processing...", { id: toastId });
@@ -116,8 +136,8 @@ export function Step5TestTransfer({ receiverId }: Step5TestTransferProps) {
 
   return (
     <div className="row">
-      <aside className={`panel note ${isBlocked ? "is-disabled" : ""}`}>
-        <h3>05 Test transfer</h3>
+      <aside className={`panel note ${isBlocked ? "is-disabled" : ""} pad-left-05`}>
+        <h3>05 Test Transfer</h3>
         <p className="helper">
           Send a small NEAR transfer to confirm passkey transaction signing works after email recovery.
         </p>
@@ -125,7 +145,6 @@ export function Step5TestTransfer({ receiverId }: Step5TestTransferProps) {
       <section className={`panel ${isBlocked ? "is-disabled" : ""}`}>
         <div className="panel-header">
           <h2>Test transfer</h2>
-          <span className="pill">05</span>
         </div>
         <div className="stack">
           <p className="helper">
