@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "examples/vite/**"
-      - ".github/workflows/deploy.yml"
+      - ".github/workflows/deploy-vite-example.yml"
   workflow_dispatch:
 
 jobs:
@@ -15,6 +15,7 @@ jobs:
     environment: testnet
     permissions:
       contents: read
+      deployments: write
     env:
       CF_PAGES_PROJECT_VITE: outlayer-email-recovery-example
     steps:
