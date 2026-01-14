@@ -90,7 +90,7 @@ struct ExecutionParams {
 
 /// OutLayer interface for `request_execution`.
 ///
-/// Important: The parameter *names* here (`code_source`, `resource_limits`, `input_data`,
+/// Important: The parameter *names* here (`source`, `resource_limits`, `input_data`,
 /// `secrets_ref`, `response_format`, `payer_account_id`, `params`) become the JSON
 /// field names that OutLayer sees. Near SDK's `#[ext_contract]` macro uses these
 /// identifiers when serializing arguments, so a Rust call like:
@@ -98,7 +98,7 @@ struct ExecutionParams {
 /// ```ignore
 /// ext_outlayer::ext(outlayer_account)
 ///     .request_execution(
-///         code_source,
+///         source,
 ///         resource_limits,
 ///         input_payload,
 ///         Some(secrets),
@@ -111,7 +111,7 @@ struct ExecutionParams {
 /// is equivalent on chain to the CLI example from the OutLayer docs:
 /// ```text
 /// near call outlayer.testnet request_execution '{
-///   "code_source": { ... },
+///   "source": { ... },
 ///   "resource_limits": { ... },
 ///   "input_data": "{...}",
 ///   "secrets_ref": { "profile": "...", "account_id": "..." },
@@ -125,7 +125,7 @@ struct ExecutionParams {
 trait OutLayer {
     fn request_execution(
         &mut self,
-        code_source: serde_json::Value,
+        source: serde_json::Value,
         resource_limits: serde_json::Value,
         input_data: String,
         secrets_ref: Option<SecretsReference>,
@@ -246,19 +246,19 @@ impl EmailDkimVerifier {
         assert!(attached >= MIN_DEPOSIT,
             "Attach at least 0.01 NEAR for Outlayer execution");
 
-        let source = self.resolve_outlayer_worker_wasm_source();
-        let code_source = if !source.url.is_empty() && !source.hash.is_empty() {
+        let worker_wasm_source = self.resolve_outlayer_worker_wasm_source();
+        let source = if !worker_wasm_source.url.is_empty() && !worker_wasm_source.hash.is_empty() {
             serde_json::json!({
                 "WasmUrl": {
-                    "url": source.url,
-                    "hash": source.hash,
+                    "url": worker_wasm_source.url,
+                    "hash": worker_wasm_source.hash,
                     "build_target": "wasm32-wasip2",
                 }
             })
-        } else if source.url.is_empty() && source.hash.is_empty() {
+        } else if worker_wasm_source.url.is_empty() && worker_wasm_source.hash.is_empty() {
             serde_json::json!({
                 "GitHub": {
-                    "repo": "github.com/web3-authn/email-dkim-verifier-contract",
+                    "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
                     "commit": "main",
                     "build_target": "wasm32-wasip2",
                 }
@@ -271,7 +271,7 @@ impl EmailDkimVerifier {
 
         let resource_limits = serde_json::json!({
             "max_instructions": 10_000_000_000u64,
-            "max_memory_mb": 256u64,
+            "max_memory_mb": 256u32,
             "max_execution_seconds": 60u64
         });
 
@@ -295,7 +295,7 @@ impl EmailDkimVerifier {
             .with_attached_deposit(near_sdk::NearToken::from_yoctonear(MIN_DEPOSIT))
             .with_unused_gas_weight(1)
             .request_execution(
-                code_source,
+                source,
                 resource_limits,
                 input_payload,
                 Some(secrets),
@@ -347,7 +347,7 @@ impl EmailDkimVerifier {
             ));
         }
         if url.is_empty() && hash.is_empty() {
-            env::log_str("Outlayer worker wasm source unset; defaulting Outlayer code_source to GitHub");
+            env::log_str("Outlayer worker wasm source unset; defaulting Outlayer source to GitHub");
         }
 
         OutlayerWorkerWasmSource { url, hash }

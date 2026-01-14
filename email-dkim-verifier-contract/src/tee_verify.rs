@@ -81,19 +81,19 @@ pub fn request_email_verification_private_inner(
     );
     let input_payload = input_args.to_json_string();
 
-    let source = contract.resolve_outlayer_worker_wasm_source();
-    let code_source = if !source.url.is_empty() && !source.hash.is_empty() {
+    let worker_wasm_source = contract.resolve_outlayer_worker_wasm_source();
+    let source = if !worker_wasm_source.url.is_empty() && !worker_wasm_source.hash.is_empty() {
         json!({
             "WasmUrl": {
-                "url": source.url,
-                "hash": source.hash,
+                "url": worker_wasm_source.url,
+                "hash": worker_wasm_source.hash,
                 "build_target": "wasm32-wasip2"
             }
         })
-    } else if source.url.is_empty() && source.hash.is_empty() {
+    } else if worker_wasm_source.url.is_empty() && worker_wasm_source.hash.is_empty() {
         json!({
             "GitHub": {
-                "repo": "github.com/web3-authn/email-dkim-verifier-contract",
+                "repo": "https://github.com/web3-authn/email-dkim-verifier-contract",
                 "commit": "main",
                 "build_target": "wasm32-wasip2"
             }
@@ -106,7 +106,7 @@ pub fn request_email_verification_private_inner(
 
     let resource_limits = json!({
         "max_instructions": 10_000_000_000u64,
-        "max_memory_mb": 256u64,
+        "max_memory_mb": 256u32,
         "max_execution_seconds": 60u64
     });
 
@@ -125,7 +125,7 @@ pub fn request_email_verification_private_inner(
         .with_attached_deposit(NearToken::from_yoctonear(outlayer_deposit))
         .with_unused_gas_weight(1)
         .request_execution(
-            code_source,
+            source,
             resource_limits,
             input_payload,
             Some(secrets),
